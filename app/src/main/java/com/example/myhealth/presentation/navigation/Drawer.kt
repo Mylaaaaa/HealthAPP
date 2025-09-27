@@ -77,7 +77,7 @@ fun Drawer(
                             scaffoldState.drawerState.close()
                         }
                     },
-                painter = painterResource(id = R.drawable.ic_health_connect_logo),
+                painter = painterResource(id = R.drawable.app_logo),
                 contentDescription = stringResource(id = R.string.health_connect_logo)
             )
         }

@@ -15,6 +15,9 @@
  */
 package com.example.myhealth.presentation.component
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -72,12 +75,24 @@ fun SleepSessionRow(
         val formatter = DateTimeFormatter.ofPattern("eee, d LLL")
         val startDateTime =
             dateTimeWithOffsetOrDefault(sessionData.startTime, sessionData.startZoneOffset)
-        Text(
-            modifier = Modifier
-                .weight(0.4f),
-            color = MaterialTheme.colors.primary,
-            text = startDateTime.format(formatter)
-        )
+
+
+        Row(
+            modifier = Modifier.weight(0.4f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.app_logo),
+                contentDescription = stringResource(R.string.health_connect_logo),
+                tint = Color.Unspecified,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Text(
+                color = MaterialTheme.colors.primary,
+                text = startDateTime.format(formatter)
+            )
+        }
+
         if (!expanded) {
             Text(
                 modifier = Modifier
@@ -90,7 +105,8 @@ fun SleepSessionRow(
             onClick = { expanded = !expanded }
         ) {
             val icon = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown
-            Icon(icon, stringResource(R.string.delete_button))
+            Icon(imageVector = icon, contentDescription = stringResource(R.string.details_button))
+
         }
     }
     if (expanded) {

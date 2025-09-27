@@ -36,12 +36,12 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:name="com.example.healthconnectsample.presentation.BaseApplication"
+        android:name="com.example.myhealth.presentation.BaseApplication"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.HealthConnect">
         <activity
-            android:name="com.example.healthconnectsample.presentation.MainActivity"
+            android:name="com.example.myhealth.presentation.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.HealthConnect">
             <intent-filter>

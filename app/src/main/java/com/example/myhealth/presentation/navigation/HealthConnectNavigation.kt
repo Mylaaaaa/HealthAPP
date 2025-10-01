@@ -51,6 +51,10 @@ import com.example.myhealth.presentation.screen.sleepsession.SleepSessionViewMod
 import com.example.myhealth.presentation.screen.sleepsession.SleepSessionViewModelFactory
 import com.example.myhealth.showExceptionSnackbar
 import kotlinx.coroutines.launch
+import com.example.myhealth.presentation.screen.dashboard.DashboardScreen
+import com.example.myhealth.presentation.screen.nutrition.NutritionScreen
+import com.example.myhealth.presentation.screen.mind.MindScreen
+import com.example.myhealth.presentation.screen.reports.ReportsScreen
 
 /**
  * Provides the navigation in the app.
@@ -297,5 +301,9 @@ fun HealthConnectNavigation(
                 permissionsLauncher.launch(values)
             }
         }
+        composable(Screen.Dashboard.route) { DashboardScreen() }
+        composable(Screen.Nutrition.route) { NutritionScreen() }
+        composable(Screen.Mind.route)      { MindScreen() }
+        composable(Screen.Reports.route)   { ReportsScreen() }
     }
 }

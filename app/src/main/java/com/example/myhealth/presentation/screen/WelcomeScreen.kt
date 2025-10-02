@@ -1,140 +1,122 @@
-/*
- * Copyright 2024 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.example.myhealth.presentation.screen
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.Card
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.health.connect.client.HealthConnectClient.Companion.SDK_AVAILABLE
-import androidx.health.connect.client.HealthConnectClient.Companion.SDK_UNAVAILABLE
-import androidx.health.connect.client.HealthConnectClient.Companion.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.myhealth.R
-import com.example.myhealth.presentation.component.InstalledMessage
-import com.example.myhealth.presentation.component.NotInstalledMessage
-import com.example.myhealth.presentation.component.NotSupportedMessage
-import com.example.myhealth.presentation.theme.HealthConnectTheme
+import androidx.navigation.NavController
+import com.example.myhealth.presentation.navigation.Screen
 
 /**
- * Welcome screen shown when the app is first launched.
+ * Home screen of the app.
+ * Shows the welcome message and provides quick navigation entries.
  */
 @Composable
-fun WelcomeScreen(
-    healthConnectAvailability: Int,
-    onResumeAvailabilityCheck: () -> Unit,
-    lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current
-) {
-    val currentOnAvailabilityCheck by rememberUpdatedState(onResumeAvailabilityCheck)
-
-    // Add a listener to re-check whether Health Connect has been installed each time the Welcome
-    // screen is resumed: This ensures that if the user has been redirected to the Play store and
-    // followed the onboarding flow, then when the app is resumed, instead of showing the message
-    // to ask the user to install Health Connect, the app recognises that Health Connect is now
-    // available and shows the appropriate welcome.
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                currentOnAvailabilityCheck()
-            }
-        }
-
-        // Add the observer to the lifecycle
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        // When the effect leaves the Composition, remove the observer
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
+fun WelcomeScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Top,
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Image(
-            modifier = Modifier.fillMaxWidth(0.5f),
-            painter = painterResource(id = R.drawable.app_logo),
-            contentDescription = stringResource(id = R.string.health_connect_logo)
-        )
-        Spacer(modifier = Modifier.height(32.dp))
+        // Welcome text section
+        Spacer(Modifier.height(8.dp))
         Text(
-            text = stringResource(id = R.string.welcome_message),
-            color = MaterialTheme.colors.onBackground
+            text = "Welcome to My Health!",
+            style = MaterialTheme.typography.subtitle1,
+            color = MaterialTheme.colors.onSurface
         )
-        Spacer(modifier = Modifier.height(32.dp))
-        when (healthConnectAvailability) {
-            SDK_AVAILABLE -> InstalledMessage()
-            SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> NotInstalledMessage()
-            SDK_UNAVAILABLE -> NotSupportedMessage()
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Use the menu or quick entries below to explore different features of My Health.",
+            style = MaterialTheme.typography.body2
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        // Quick navigation cards
+        Text(
+            text = "Quick entries",
+            style = MaterialTheme.typography.overline,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 4.dp, bottom = 8.dp)
+        )
+
+        val entries = listOf(
+            Screen.Dashboard,
+            Screen.ExerciseSessions,
+            Screen.SleepSessions,
+            Screen.InputReadings,
+            Screen.Reports,
+            Screen.Nutrition,
+            Screen.Mind,
+            Screen.SettingsScreen
+        ).filter { it.hasMenuItem }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(entries.size) { idx ->
+                val s = entries[idx]
+                HomeNavCard(
+                    title = s.name.replaceFirstChar { it.uppercase() },
+                    subtitle = s.route,
+                    onClick = {
+                        navController.navigate(s.route) {
+                            navController.graph.startDestinationRoute?.let { route ->
+                                popUpTo(route) { saveState = true }
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
+            }
         }
     }
 }
 
-@Preview
+/**
+ * Single card item for navigation entry.
+ */
 @Composable
-fun InstalledMessagePreview() {
-    HealthConnectTheme {
-        WelcomeScreen(
-            healthConnectAvailability = SDK_AVAILABLE,
-            onResumeAvailabilityCheck = {}
-        )
-    }
-}
-
-@Preview
-@Composable
-fun NotInstalledMessagePreview() {
-    HealthConnectTheme {
-        WelcomeScreen(
-            healthConnectAvailability = SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED,
-            onResumeAvailabilityCheck = {}
-        )
-    }
-}
-
-@Preview
-@Composable
-fun NotSupportedMessagePreview() {
-    HealthConnectTheme {
-        WelcomeScreen(
-            healthConnectAvailability = SDK_UNAVAILABLE,
-            onResumeAvailabilityCheck = {}
-        )
+private fun HomeNavCard(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Card(
+        elevation = 4.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.subtitle1)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.body2,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }

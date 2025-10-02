@@ -69,12 +69,7 @@ fun HealthConnectNavigation(
     NavHost(navController = navController, startDestination = Screen.WelcomeScreen.route) {
         val availability by healthConnectManager.availability
         composable(Screen.WelcomeScreen.route) {
-            WelcomeScreen(
-                healthConnectAvailability = availability,
-                onResumeAvailabilityCheck = {
-                    healthConnectManager.checkAvailability()
-                }
-            )
+            WelcomeScreen(navController)
         }
         composable(
             route = Screen.PrivacyPolicy.route,

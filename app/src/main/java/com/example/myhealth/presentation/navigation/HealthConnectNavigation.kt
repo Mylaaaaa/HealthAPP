@@ -65,7 +65,7 @@ fun HealthConnectNavigation(
 
         // Home page: reuse your WelcomeScreen as the Home UI
         composable(Screen.Home.route) {
-            WelcomeScreen(navController)
+            com.example.myhealth.presentation.home.HomeHost(navController)
         }
 
         composable(

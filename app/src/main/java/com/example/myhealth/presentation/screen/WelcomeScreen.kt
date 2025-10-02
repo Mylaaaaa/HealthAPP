@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Card
 import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
@@ -15,7 +17,10 @@ import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.PlayArrow
@@ -25,31 +30,65 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.example.myhealth.presentation.navigation.Screen
 import com.example.myhealth.presentation.theme.HealthConnectTheme
+import com.example.myhealth.presentation.home.HomeUiState
+import kotlin.math.max
+import kotlin.math.min
 
 
+/**
+ * Home screen rendering from HomeUiState. No DB required at this stage.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WelcomeScreen(
     navController: NavController,
-    userName: String = "User",
-    steps: Int = 7560,
-    sleepHours: Double = 7.2,
-    bodyWeightKg: Double = 54.8
+    ui: HomeUiState,
+    userName: String = "User"
 ) {
-    Column(Modifier.fillMaxSize()) {
+    val steps = ui.steps
+    val sleepHours = ui.sleepHours
+    val bodyWeightKg = ui.bodyWeightKg
 
-        // 顶部渐变 Hero
+    val weeklySteps = ui.weeklySteps
+    val weeklySleepHours = ui.weeklySleep
+    val weeklyWeight = ui.weeklyWeight
+
+    val stepGoal = ui.stepGoal
+    val activeMinToday = ui.activeMinToday
+    val activeMinGoal = ui.activeMinGoal
+    val sleepTodayHours = ui.sleepTodayHours
+    val sleepGoalHours = ui.sleepGoalHours
+
+    val hasAllPermissions = ui.permissions.hasAll
+    val hasBackgroundReadPermission = ui.permissions.hasBackgroundRead
+    val lastWeighInDaysAgo = ui.lastWeighInDaysAgo
+    val currentStreakDays = ui.currentStreakDays
+    val showBadgeUnlocked = ui.showBadgeUnlocked
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()) // whole page scrolls
+    ) {
+
+        // Gradient hero
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -72,7 +111,7 @@ fun WelcomeScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(Modifier.height(6.dp))
-                    CapsuleChip(text = "🔥 3-day streak")
+                    CapsuleChip(text = "🔥 ${currentStreakDays}-day streak")
                 }
                 Icon(
                     Icons.Filled.FitnessCenter,
@@ -83,7 +122,24 @@ fun WelcomeScreen(
             }
         }
 
-        // 双按钮 CTA（用 weight 均分）
+        // Permission banners (conditional)
+        if (!hasAllPermissions) {
+            PermissionBanner(
+                text = "Some permissions are missing. Grant permissions to unlock auto-tracking.",
+                actionText = "Grant permissions",
+                icon = Icons.Filled.Error
+            ) { navController.navigate(Screen.SettingsScreen.route) }
+            Spacer(Modifier.height(8.dp))
+        }
+        if (!hasBackgroundReadPermission) {
+            PermissionBanner(
+                text = "Background read is off. Enable to keep data up to date.",
+                actionText = "Enable background read"
+            ) { navController.navigate(Screen.SettingsScreen.route) }
+            Spacer(Modifier.height(4.dp))
+        }
+
+        // CTAs
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -92,21 +148,21 @@ fun WelcomeScreen(
         ) {
             CtaButton(
                 title = "Start Exercise",
-                icon = Icons.Filled.PlayArrow,            // 兼容性好
+                icon = Icons.Filled.PlayArrow,
                 bg = Color(0xFF4C6FFF),
                 onClick = { navController.navigate(Screen.ExerciseSessions.route) },
                 modifier = Modifier.weight(1f)
             )
             CtaButton(
                 title = "Record Weight",
-                icon = Icons.Filled.Accessibility,        // 兼容性替代 MonitorWeight
+                icon = Icons.Filled.Accessibility,
                 bg = Color(0xFF00B894),
                 onClick = { navController.navigate(Screen.InputReadings.route) },
                 modifier = Modifier.weight(1f)
             )
         }
 
-        // 横向统计胶囊
+        // Stat pills
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -115,17 +171,144 @@ fun WelcomeScreen(
             contentPadding = PaddingValues(horizontal = 16.dp)
         ) {
             item { StatPill(Icons.Filled.FitnessCenter, "$steps", "Steps", Color(0xFF4C6FFF)) }
-            item { StatPill(Icons.Filled.Hotel, "${String.format("%.1f", sleepHours)} h", "Sleep", Color(0xFF7C4DFF)) }
-            item { StatPill(Icons.Filled.Accessibility, "${String.format("%.1f", bodyWeightKg)} kg", "Weight", Color(0xFF00B894)) }
+            item { StatPill(Icons.Filled.Hotel, "${String.format(java.util.Locale.US, "%.1f", sleepHours)} h", "Sleep", Color(0xFF7C4DFF)) }
+            item { StatPill(Icons.Filled.Accessibility, "${String.format(java.util.Locale.US, "%.1f", bodyWeightKg)} kg", "Weight", Color(0xFF00B894)) }
         }
 
+        // Weekly trends (sparklines + WoW change)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            TrendMiniCard(
+                title = "Steps",
+                values = weeklySteps.map { it.toFloat() },
+                unit = "",
+                wowText = wowLabel(
+                    current = weeklySteps.lastOrNull()?.toFloat() ?: 0f,
+                    prev = weeklySteps.dropLast(1).lastOrNull()?.toFloat() ?: 0f
+                ),
+                accent = Color(0xFF4C6FFF),
+                onClick = { navController.navigate(Screen.ExerciseSessions.route) },
+                modifier = Modifier.weight(1f)
+            )
+            TrendMiniCard(
+                title = "Sleep",
+                values = weeklySleepHours.map { it.toFloat() },
+                unit = "h",
+                wowText = wowLabel(
+                    current = weeklySleepHours.lastOrNull()?.toFloat() ?: 0f,
+                    prev = weeklySleepHours.dropLast(1).lastOrNull()?.toFloat() ?: 0f
+                ),
+                accent = Color(0xFF7C4DFF),
+                onClick = { navController.navigate(Screen.SleepSessions.route) },
+                modifier = Modifier.weight(1f)
+            )
+            TrendMiniCard(
+                title = "Weight",
+                values = weeklyWeight.map { it.toFloat() },
+                unit = "kg",
+                wowText = wowLabel(
+                    current = weeklyWeight.lastOrNull()?.toFloat() ?: 0f,
+                    prev = weeklyWeight.dropLast(1).lastOrNull()?.toFloat() ?: 0f
+                ),
+                accent = Color(0xFF00B894),
+                onClick = { navController.navigate(Screen.InputReadings.route) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // Reminder & tasks
+        val stepsRemaining = max(0, stepGoal - steps)
+        val reminderText = when {
+            stepsRemaining > 0 -> "You're ${stepsRemaining} steps away from today's goal."
+            lastWeighInDaysAgo > 2 -> "No weigh-in for ${lastWeighInDaysAgo} days. Log a weight?"
+            else -> "Nice momentum! Keep it up today."
+        }
+        ReminderCard(
+            text = reminderText,
+            primaryText = "Start Exercise",
+            secondaryText = "Record Weight",
+            onPrimary = { navController.navigate(Screen.ExerciseSessions.route) },
+            onSecondary = { navController.navigate(Screen.InputReadings.route) }
+        )
+
+        // Streak & badge (UI only)
+        StreakBadgeRow(
+            streakDays = currentStreakDays,
+            showBadgeUnlocked = showBadgeUnlocked
+        )
+
+        // Goal rings (above Explore)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            GoalRingCard(
+                label = "Steps",
+                valueLabel = "$steps / $stepGoal",
+                ratio = safeRatio(steps.toFloat(), stepGoal.toFloat()),
+                tint = Color(0xFF4C6FFF),
+                modifier = Modifier.weight(1f)
+            )
+            GoalRingCard(
+                label = "Active min",
+                valueLabel = "$activeMinToday / $activeMinGoal",
+                ratio = safeRatio(activeMinToday.toFloat(), activeMinGoal.toFloat()),
+                tint = Color(0xFFFF7043),
+                modifier = Modifier.weight(1f)
+            )
+            GoalRingCard(
+                label = "Sleep",
+                valueLabel = "${String.format(java.util.Locale.US, "%.1f", sleepTodayHours)} / ${String.format(java.util.Locale.US, "%.1f", sleepGoalHours)} h",
+                ratio = safeRatio(sleepTodayHours.toFloat(), sleepGoalHours.toFloat()),
+                tint = Color(0xFF7C4DFF),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // Explore label
         Text(
             text = "Explore",
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
         )
 
-        // 功能网格
+        // Health tip
+        HealthTipCard(
+            tip = "Avoid screens 1 hour before bed.",
+            actionText = "Learn more"
+        ) { navController.navigate(Screen.SleepSessions.route) }
+
+        // Recent activity (3 items + View all)
+        RecentActivitySection(
+            items = ui.recent.map {
+                RecentItem(
+                    icon = when (it.type) {
+                        com.example.myhealth.data.ActivityType.EXERCISE -> Icons.Filled.FitnessCenter
+                        com.example.myhealth.data.ActivityType.WEIGHT -> Icons.Filled.Accessibility
+                        com.example.myhealth.data.ActivityType.SLEEP -> Icons.Filled.Hotel
+                    },
+                    title = it.title,
+                    time = it.timeText
+                )
+            },
+            onViewAll = { navController.navigate(Screen.Reports.route) },
+            onItemClick = { icon ->
+                when (icon) {
+                    Icons.Filled.FitnessCenter -> navController.navigate(Screen.ExerciseSessions.route)
+                    Icons.Filled.Accessibility -> navController.navigate(Screen.InputReadings.route)
+                    Icons.Filled.Hotel -> navController.navigate(Screen.SleepSessions.route)
+                    else -> {}
+                }
+            }
+        )
+
+        // ---------- Feature grid (parent scrolls; grid itself doesn't) ----------
         val entries = listOf(
             NavEntry(Screen.Dashboard,        "Dashboard",         Icons.Filled.Dashboard),
             NavEntry(Screen.ExerciseSessions,  "Exercise sessions", Icons.Filled.FitnessCenter),
@@ -137,11 +320,18 @@ fun WelcomeScreen(
             NavEntry(Screen.SettingsScreen,    "Settings",          Icons.Filled.Settings)
         ).filter { it.screen.hasMenuItem }
 
+        // Compute a fixed height so grid follows the parent scroll
+        val itemHeightDp = 118
+        val vSpacingDp = 14
+        val rows = (entries.size + 1) / 2
+        val gridHeight = (rows * itemHeightDp + max(0, rows - 1) * vSpacingDp + 8).dp
+
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
+            userScrollEnabled = false,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .height(gridHeight),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
@@ -154,10 +344,11 @@ fun WelcomeScreen(
                 )
             }
         }
+        // -----------------------------------------------------------------------
     }
 }
 
-/* ---------- 子组件 ---------- */
+/* ---------- Reused components (concise English comments) ---------- */
 
 @Composable
 private fun CapsuleChip(text: String) {
@@ -174,12 +365,17 @@ private fun CtaButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(backgroundColor = bg, elevation = 6.dp, modifier = modifier
-        .height(44.dp)
-        .clickable { onClick() }
+    Card(
+        backgroundColor = bg,
+        elevation = 6.dp,
+        modifier = modifier
+            .height(44.dp)
+            .clickable { onClick() }
     ) {
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -192,9 +388,17 @@ private fun CtaButton(
 
 @Composable
 private fun StatPill(icon: ImageVector, value: String, label: String, tint: Color) {
-    Card(elevation = 2.dp, backgroundColor = Color.White, modifier = Modifier.height(64.dp).widthIn(min = 140.dp)) {
+    Card(
+        elevation = 2.dp,
+        backgroundColor = Color.White,
+        modifier = Modifier
+            .height(64.dp)
+            .widthIn(min = 140.dp)
+    ) {
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
@@ -209,9 +413,12 @@ private fun StatPill(icon: ImageVector, value: String, label: String, tint: Colo
 
 @Composable
 private fun FeatureCard(icon: ImageVector, title: String, onClick: () -> Unit) {
-    Card(elevation = 6.dp, backgroundColor = Color.White, modifier = Modifier
-        .height(118.dp)
-        .clickable { onClick() }
+    Card(
+        elevation = 6.dp,
+        backgroundColor = Color.White,
+        modifier = Modifier
+            .height(118.dp)
+            .clickable { onClick() }
     ) {
         Column(
             Modifier.fillMaxSize(),
@@ -225,12 +432,377 @@ private fun FeatureCard(icon: ImageVector, title: String, onClick: () -> Unit) {
     }
 }
 
-/* ---------- 数据 & 预览 ---------- */
+/* ---------- Trend sparklines ---------- */
+
+@Composable
+private fun TrendMiniCard(
+    title: String,
+    values: List<Float>,
+    unit: String,
+    wowText: Pair<String, Color>,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        elevation = 4.dp,
+        backgroundColor = Color.White,
+        modifier = modifier
+            .height(96.dp)
+            .clickable { onClick() }
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(10.dp)
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(wowText.first, color = wowText.second, fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            Sparkline(
+                data = values,
+                strokeWidth = 2.dp,
+                tint = accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+            )
+            if (values.isNotEmpty()) {
+                val end = values.last()
+                Text(
+                    "${trimNumber(end)} $unit",
+                    fontSize = 12.sp,
+                    color = Color.DarkGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Sparkline(
+    data: List<Float>,
+    strokeWidth: Dp,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        if (data.size < 2) return@Canvas
+        val minV = data.minOrNull() ?: 0f
+        val maxV = data.maxOrNull() ?: 1f
+        val span = max(1e-6f, maxV - minV)
+        val w = size.width
+        val h = size.height
+        val stepX = w / (data.size - 1)
+        val path = Path()
+        data.forEachIndexed { idx, v ->
+            val x = idx * stepX
+            val y = h - ((v - minV) / span) * h
+            if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(path = path, color = tint, style = Stroke(width = strokeWidth.toPx(), cap = StrokeCap.Round))
+        val lastY = h - ((data.last() - minV) / span) * h
+        drawCircle(color = tint, radius = 3.5.dp.toPx(), center = Offset(w, lastY))
+    }
+}
+
+private fun trimNumber(v: Float): String =
+    if (kotlin.math.abs(v - v.toInt()) < 1e-4) v.toInt().toString()
+    else String.format(java.util.Locale.US, "%.1f", v)
+
+/* ---------- Reminder ---------- */
+
+@Composable
+private fun ReminderCard(
+    text: String,
+    primaryText: String,
+    secondaryText: String,
+    onPrimary: () -> Unit,
+    onSecondary: () -> Unit
+) {
+    Card(
+        elevation = 4.dp,
+        backgroundColor = Color(0xFFF6F8FF),
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .fillMaxWidth()
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CtaButton("Start Exercise", Icons.Filled.PlayArrow, Color(0xFF4C6FFF), onPrimary)
+                CtaButton("Record Weight", Icons.Filled.Accessibility, Color(0xFF00B894), onSecondary)
+            }
+        }
+    }
+}
+
+/* ---------- Streak & Badge ---------- */
+
+@Composable
+private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Card(
+            elevation = 3.dp,
+            backgroundColor = Color.White,
+            modifier = Modifier
+                .weight(1f)
+                .height(70.dp)
+        ) {
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFFFFA726))
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Streak", fontWeight = FontWeight.SemiBold)
+                    Text("$streakDays days", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
+        }
+        Card(
+            elevation = 3.dp,
+            backgroundColor = Color.White,
+            modifier = Modifier
+                .weight(1f)
+                .height(70.dp)
+        ) {
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Badge,
+                    null,
+                    tint = if (showBadgeUnlocked) Color(0xFF66BB6A) else Color(0xFFBDBDBD)
+                )
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Badge", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (showBadgeUnlocked) "New badge unlocked!" else "Keep going to unlock",
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+/* ---------- Goal rings ---------- */
+
+private fun safeRatio(now: Float, goal: Float): Float =
+    if (goal <= 0f) 0f else min(1f, max(0f, now / goal))
+
+@Composable
+private fun GoalRingCard(
+    label: String,
+    valueLabel: String,
+    ratio: Float,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        elevation = 3.dp,
+        backgroundColor = Color.White,
+        modifier = modifier
+            .height(112.dp)
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            RingProgress(progress = ratio, size = 46.dp, strokeWidth = 6.dp, tint = tint)
+            Spacer(Modifier.height(6.dp))
+            Text(label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(valueLabel, color = Color.Gray, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun RingProgress(progress: Float, size: Dp, strokeWidth: Dp, tint: Color) {
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(size)) {
+        val sweep = 360f * progress
+        drawArc(
+            color = Color(0xFFEAEAEA),
+            startAngle = -90f,
+            sweepAngle = 360f,
+            useCenter = false,
+            style = Stroke(width = strokeWidth.toPx(), cap = StrokeCap.Round)
+        )
+        drawArc(
+            color = tint,
+            startAngle = -90f,
+            sweepAngle = sweep,
+            useCenter = false,
+            style = Stroke(width = strokeWidth.toPx(), cap = StrokeCap.Round)
+        )
+    }
+}
+
+/* ---------- Health tip ---------- */
+
+@Composable
+private fun HealthTipCard(tip: String, actionText: String, onClick: () -> Unit) {
+    Card(
+        elevation = 3.dp,
+        backgroundColor = Color.White,
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Daily tip", fontWeight = FontWeight.SemiBold)
+                Text(tip, color = Color.Gray, fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(actionText, color = Color(0xFF4C6FFF), fontWeight = FontWeight.Medium, fontSize = 13.sp)
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+}
+
+/* ---------- Recent activity ---------- */
+
+data class RecentItem(val icon: ImageVector, val title: String, val time: String)
+
+@Composable
+private fun RecentActivitySection(
+    items: List<RecentItem>,
+    onViewAll: () -> Unit,
+    onItemClick: (ImageVector) -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "Recent",
+            style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            "View all",
+            color = Color(0xFF4C6FFF),
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.clickable { onViewAll() }
+        )
+    }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        items.take(3).forEach { item ->
+            Card(
+                elevation = 2.dp,
+                backgroundColor = Color.White,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .padding(bottom = 8.dp)
+                    .clickable { onItemClick(item.icon) }
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(item.icon, null, tint = Color(0xFF4C6FFF))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(item.time, color = Color.Gray, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* ---------- Permission banner ---------- */
+
+@Composable
+private fun PermissionBanner(
+    text: String,
+    actionText: String,
+    icon: ImageVector = Icons.Filled.Error,
+    onClick: () -> Unit
+) {
+    Card(
+        elevation = 2.dp,
+        backgroundColor = Color(0xFFFFF3E0),
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .fillMaxWidth()
+            .height(60.dp)
+            .clickable { onClick() }
+    ) {
+        Row(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, null, tint = Color(0xFFF57C00))
+            Spacer(Modifier.width(10.dp))
+            Text(text = text, modifier = Modifier.weight(1f), fontSize = 13.sp)
+            Spacer(Modifier.width(8.dp))
+            Text(actionText, color = Color(0xFFF57C00), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        }
+    }
+}
+
+/* ---------- Helper for WoW label ---------- */
+
+/**
+ * Computes week-over-week change as text and color.
+ */
+private fun wowLabel(current: Float, prev: Float): Pair<String, Color> {
+    if (prev <= 0f) return "" to Color.Gray
+    val change = ((current - prev) / prev) * 100f
+    val arrow = if (change >= 0) "↑" else "↓"
+    val color = if (change >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+    val text = String.format(java.util.Locale.US, "%s %.0f%%", arrow, kotlin.math.abs(change))
+    return text to color
+}
+
+/* ---------- Nav entries for the grid ---------- */
 
 private data class NavEntry(val screen: Screen, val title: String, val icon: ImageVector)
 
 @Preview(showBackground = true)
 @Composable
 private fun WelcomePreview() {
-    HealthConnectTheme { WelcomeScreen(rememberNavController()) }
+    HealthConnectTheme {
+        WelcomeScreen(
+            navController = rememberNavController(),
+            ui = HomeUiState()
+        )
+    }
 }

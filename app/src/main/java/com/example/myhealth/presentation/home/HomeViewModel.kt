@@ -8,8 +8,16 @@ import com.example.myhealth.data.RecentActivity
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+// Health Connect imports for permission refresh
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.SleepSessionRecord
+import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.WeightRecord
+
 /**
- * ViewModel that aggregates streams from HealthDataSource into a single UI state.
+ * Aggregates streams into a single UI state for Home.
  */
 data class HomeUiState(
     val steps: Int = 0,
@@ -26,8 +34,8 @@ data class HomeUiState(
     val lastWeighInDaysAgo: Int = 0,
     val permissions: PermissionsState = PermissionsState(hasAll = true, hasBackgroundRead = true),
     val recent: List<RecentActivity> = emptyList(),
-    val currentStreakDays: Int = 3,       // UI-only sample
-    val showBadgeUnlocked: Boolean = true // UI-only sample
+    val currentStreakDays: Int = 3,       // demo only
+    val showBadgeUnlocked: Boolean = true // demo only
 )
 
 class HomeViewModel(
@@ -37,9 +45,12 @@ class HomeViewModel(
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
+    // VM-owned permissions flow; UI derives from this.
+    private val permissionsState = MutableStateFlow(_state.value.permissions)
+
     init {
-        // Use combine(Iterable) to avoid arity limits of combine(flow1, flow2, ...).
         viewModelScope.launch {
+            // Use combine(Iterable) to avoid arity limits.
             combine(
                 listOf(
                     source.todaySteps(),          // [0] Int
@@ -52,23 +63,22 @@ class HomeViewModel(
                     source.activeMinGoal(),       // [7] Int
                     source.sleepHourGoal(),       // [8] Double
                     source.lastWeighInDaysAgo(),  // [9] Int
-                    source.permissions(),         // [10] PermissionsState
+                    permissionsState,             // [10] PermissionsState  (VM-owned)
                     source.recent()               // [11] List<RecentActivity>
                 )
             ) { arr: Array<Any?> ->
-                // Safe casts with defaults to keep UI resilient.
-                val tSteps              = (arr[0] as? Int) ?: 0
-                val tSleep              = (arr[1] as? Double) ?: 0.0
-                val wSteps              = (arr[2] as? List<Int>) ?: emptyList()
-                val wSleep              = (arr[3] as? List<Double>) ?: emptyList()
-                val wWeight             = (arr[4] as? List<Double>) ?: emptyList()
-                val sGoal               = (arr[5] as? Int) ?: 10_000
-                val tActive             = (arr[6] as? Int) ?: 0
-                val aGoal               = (arr[7] as? Int) ?: 30
-                val sGoalH              = (arr[8] as? Double) ?: 8.0
-                val lastWeigh           = (arr[9] as? Int) ?: 0
-                val perms               = (arr[10] as? PermissionsState) ?: PermissionsState(true, true)
-                val recent              = (arr[11] as? List<RecentActivity>) ?: emptyList()
+                val tSteps   = (arr[0] as? Int) ?: 0
+                val tSleep   = (arr[1] as? Double) ?: 0.0
+                val wSteps   = (arr[2] as? List<Int>) ?: emptyList()
+                val wSleep   = (arr[3] as? List<Double>) ?: emptyList()
+                val wWeight  = (arr[4] as? List<Double>) ?: emptyList()
+                val sGoal    = (arr[5] as? Int) ?: 10_000
+                val tActive  = (arr[6] as? Int) ?: 0
+                val aGoal    = (arr[7] as? Int) ?: 30
+                val sGoalH   = (arr[8] as? Double) ?: 8.0
+                val lastWeigh= (arr[9] as? Int) ?: 0
+                val perms    = (arr[10] as? PermissionsState) ?: PermissionsState(true, true)
+                val recent   = (arr[11] as? List<RecentActivity>) ?: emptyList()
 
                 _state.value.copy(
                     steps = tSteps,
@@ -86,12 +96,29 @@ class HomeViewModel(
                     permissions = perms,
                     recent = recent
                 )
-            }.collect { newState ->
-                _state.value = newState
-            }
+            }.collect { newState -> _state.value = newState }
         }
 
-        // Refresh hook; real sources would fetch/sync here.
+        // Initial refresh hook for your other data source.
         viewModelScope.launch { source.refresh() }
+    }
+
+    /**
+     * Recompute granted permissions from Health Connect and update the UI.
+     * Call this when the screen is RESUMED (user may have changed permissions).
+     */
+    fun refreshPermissions(client: HealthConnectClient) = viewModelScope.launch {
+        val required = setOf(
+            HealthPermission.getReadPermission(StepsRecord::class),
+            HealthPermission.getReadPermission(SleepSessionRecord::class),
+            HealthPermission.getReadPermission(WeightRecord::class),
+            HealthPermission.getReadPermission(ExerciseSessionRecord::class)
+        )
+        // Library version: no-arg API returns all granted permissions.
+        val granted: Set<String> = client.permissionController.getGrantedPermissions()
+        val hasAll = required.all { it in granted }
+
+        // Tie backgroundRead to hasAll for now (replace with real toggle later).
+        permissionsState.value = PermissionsState(hasAll = hasAll, hasBackgroundRead = hasAll)
     }
 }

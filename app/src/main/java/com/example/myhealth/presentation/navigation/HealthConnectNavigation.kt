@@ -7,6 +7,7 @@
  */
 package com.example.myhealth.presentation.navigation
 
+import com.example.myhealth.presentation.home.HomeHost
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.ScaffoldState
 import androidx.compose.runtime.Composable
@@ -19,7 +20,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navDeepLink
 import com.example.myhealth.data.HealthConnectManager
 import com.example.myhealth.presentation.screen.SettingsScreen
-import com.example.myhealth.presentation.screen.WelcomeScreen
 import com.example.myhealth.presentation.screen.changes.DifferentialChangesScreen
 import com.example.myhealth.presentation.screen.changes.DifferentialChangesViewModel
 import com.example.myhealth.presentation.screen.changes.DifferentialChangesViewModelFactory
@@ -60,12 +60,12 @@ fun HealthConnectNavigation(
 ) {
     val scope = rememberCoroutineScope()
 
-    // ✅ Start from Home
+    // Start from Home
     NavHost(navController = navController, startDestination = Screen.Home.route) {
 
         // Home page: reuse your WelcomeScreen as the Home UI
         composable(Screen.Home.route) {
-            com.example.myhealth.presentation.home.HomeHost(navController)
+            HomeHost(navController = navController)
         }
 
         composable(

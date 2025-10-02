@@ -50,7 +50,7 @@ fun Drawer(
                 modifier = Modifier
                     .width(96.dp)
                     .clickable {
-                        navController.navigate(Screen.WelcomeScreen.route) {
+                        navController.navigate(Screen.Home.route) {
                             navController.graph.startDestinationRoute?.let { route ->
                                 popUpTo(route) { saveState = true }
                             }

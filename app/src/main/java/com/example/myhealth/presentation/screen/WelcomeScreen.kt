@@ -1,85 +1,68 @@
 package com.example.myhealth.presentation.screen
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.Card
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
+import com.example.myhealth.R
 import com.example.myhealth.presentation.navigation.Screen
+import com.example.myhealth.presentation.theme.HealthConnectTheme
 
 /**
- * Home screen of the app.
- * Shows the welcome message and provides quick navigation entries.
+ * Home screen (formerly WelcomeScreen).
+ * Shows navigation cards for all main features.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WelcomeScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(16.dp)
     ) {
-        // Welcome text section
-        Spacer(Modifier.height(8.dp))
         Text(
-            text = "Welcome to My Health!",
-            style = MaterialTheme.typography.subtitle1,
-            color = MaterialTheme.colors.onSurface
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "Use the menu or quick entries below to explore different features of My Health.",
-            style = MaterialTheme.typography.body2
+            text = stringResource(id = R.string.home),
+            style = MaterialTheme.typography.h6
         )
 
         Spacer(Modifier.height(16.dp))
 
-        // Quick navigation cards
-        Text(
-            text = "Quick entries",
-            style = MaterialTheme.typography.overline,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 4.dp, bottom = 8.dp)
-        )
-
+        // List of entries shown on Home
         val entries = listOf(
             Screen.Dashboard,
             Screen.ExerciseSessions,
             Screen.SleepSessions,
-            Screen.InputReadings,
-            Screen.Reports,
             Screen.Nutrition,
             Screen.Mind,
+            Screen.Reports,
+            Screen.InputReadings,
             Screen.SettingsScreen
         ).filter { it.hasMenuItem }
 
-        LazyColumn(
+        // 2-column grid of navigation cards
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(entries.size) { idx ->
-                val s = entries[idx]
+            items(entries) { s ->
                 HomeNavCard(
-                    title = s.name.replaceFirstChar { it.uppercase() },
-                    subtitle = s.route,
-                    onClick = {
-                        navController.navigate(s.route) {
-                            navController.graph.startDestinationRoute?.let { route ->
-                                popUpTo(route) { saveState = true }
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
+                    title = stringResource(id = s.titleId),
+                    onClick = { navController.navigate(s.route) }
                 )
             }
         }
@@ -87,36 +70,37 @@ fun WelcomeScreen(navController: NavController) {
 }
 
 /**
- * Single card item for navigation entry.
+ * Individual navigation card for the Home screen.
  */
 @Composable
 private fun HomeNavCard(
     title: String,
-    subtitle: String,
     onClick: () -> Unit
 ) {
     Card(
-        elevation = 4.dp,
+        elevation = 6.dp,
         modifier = Modifier
             .fillMaxWidth()
+            .height(100.dp)
             .clickable { onClick() }
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(text = title, style = MaterialTheme.typography.subtitle1)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.body2,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.subtitle1
+            )
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun WelcomeScreenPreview() {
+    HealthConnectTheme {
+        val navController = rememberNavController()
+        WelcomeScreen(navController)
     }
 }

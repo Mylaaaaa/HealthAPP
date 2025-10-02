@@ -30,7 +30,7 @@ const val SERIES_RECORDS_TYPE = "seriesRecordsType"
  *     all screens in the navigation graph are intended to be directly reached from the menu).
  */
 enum class Screen(val route: String, val titleId: Int, val hasMenuItem: Boolean = true) {
-    WelcomeScreen("welcome_screen", R.string.welcome_screen, false),
+    Home("home", R.string.home),
     ExerciseSessions("exercise_sessions", R.string.exercise_sessions),
     ExerciseSessionDetail("exercise_session_detail", R.string.exercise_session_detail, false),
     SleepSessions("sleep_sessions", R.string.sleep_sessions),

@@ -90,11 +90,13 @@ fun HealthConnectNavigation(
                     healthConnectManager = healthConnectManager
                 )
             )
+
             val permissionsGranted by viewModel.permissionsGranted
             val sessionsList by viewModel.sessionsList
             val permissions = viewModel.permissions
             val backgroundReadAvailable by viewModel.backgroundReadAvailable
             val backgroundReadGranted by viewModel.backgroundReadGranted
+
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
                 rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
@@ -102,15 +104,15 @@ fun HealthConnectNavigation(
                 }
 
             ExerciseSessionScreen(
-                permissionsGranted = permissionsGranted,
                 permissions = permissions,
+                permissionsGranted = permissionsGranted,
                 backgroundReadAvailable = backgroundReadAvailable,
                 backgroundReadGranted = backgroundReadGranted,
                 sessionsList = sessionsList,
                 uiState = viewModel.uiState,
                 onInsertClick = { viewModel.insertExerciseSession() },
                 onDetailsClick = { uid ->
-                    navController.navigate(Screen.ExerciseSessionDetail.route + "/" + uid)
+                    navController.navigate(Screen.ExerciseSessionDetail.route + "/$uid")
                 },
                 onDeleteClick = { uid -> viewModel.deleteExerciseSession(uid) },
                 onError = { exception ->
@@ -120,6 +122,7 @@ fun HealthConnectNavigation(
                 onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
             )
         }
+
 
         composable(Screen.WeightRecords.route) {
             val viewModel: InputReadingsViewModel = viewModel(

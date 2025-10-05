@@ -45,12 +45,12 @@ in a single, unified interface.
 ## 📱 App Structure
 
 ### home
-![home1.png](screenshots/home1.png)![img.png](img.png)
+![home1.png](screenshots/home1.png)
 
-![home2.png](screenshots/home2.png)![img_1.png](img_1.png)
+![home2.png](screenshots/home2.png)
 
 ### record weight
-![recordweight.png](screenshots/recordweight.png)![img_2.png](img_2.png)
+![recordweight.png](screenshots/recordweight.png)
 
 ---
 
@@ -82,7 +82,6 @@ in a single, unified interface.
 IT / Computer Science Student  
 James Cook University (JCU), Singapore
 
-📧 *[Optional: add your university email or GitHub link]*  
 🌐 GitHub: [Mylaaaaa](https://github.com/Mylaaaaa)
 
 ---

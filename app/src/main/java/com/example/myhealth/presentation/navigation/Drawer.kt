@@ -83,6 +83,7 @@ fun Drawer(
             Screen.ExerciseSessions,
             Screen.SleepSessions,
             Screen.InputReadings,
+            Screen.WeightRecords,
             Screen.Dashboard,
             Screen.Nutrition,
             Screen.Mind,

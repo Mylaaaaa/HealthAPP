@@ -16,6 +16,8 @@
 package com.example.myhealth.presentation
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Scaffold
@@ -24,12 +26,15 @@ import androidx.compose.material.SnackbarHost
 import androidx.compose.material.Text
 import androidx.compose.material.TopAppBar
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.rememberScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.core.app.ActivityCompat
 import androidx.health.connect.client.HealthConnectClient.Companion.SDK_AVAILABLE
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -43,6 +48,11 @@ import kotlinx.coroutines.launch
 
 const val TAG = "Health Connect sample"
 
+/** Determines whether it is a top-level page (three dots are displayed on the homepage, while a return arrow is shown on other pages) */
+private fun isTopLevel(route: String?): Boolean {
+    return route?.startsWith(Screen.Home.route) == true
+}
+
 @SuppressLint("UnusedMaterialScaffoldPaddingParameter")
 @Composable
 fun HealthConnectApp(healthConnectManager: HealthConnectManager) {
@@ -52,8 +62,25 @@ fun HealthConnectApp(healthConnectManager: HealthConnectManager) {
         val scope = rememberCoroutineScope()
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route
-
         val availability by healthConnectManager.availability
+        val context = LocalContext.current
+
+        // System return key logic: First close the Drawer → Then return → Otherwise exit the App
+        BackHandler(enabled = true) {
+            when {
+                scaffoldState.drawerState.isOpen -> {
+                    scope.launch { scaffoldState.drawerState.close() }
+                }
+                navController.previousBackStackEntry != null -> {
+                    navController.popBackStack()
+                }
+                else -> {
+                    (context as? Activity)?.let {
+                        ActivityCompat.finishAfterTransition(it)
+                    }
+                }
+            }
+        }
 
         Scaffold(
             scaffoldState = scaffoldState,
@@ -65,24 +92,34 @@ fun HealthConnectApp(healthConnectManager: HealthConnectManager) {
                             Screen.SleepSessions.route -> Screen.SleepSessions.titleId
                             Screen.InputReadings.route -> Screen.InputReadings.titleId
                             Screen.DifferentialChanges.route -> Screen.DifferentialChanges.titleId
+                            Screen.WeightRecords.route -> Screen.WeightRecords.titleId
                             else -> R.string.app_name
                         }
                         Text(stringResource(titleId))
                     },
                     navigationIcon = {
-                        IconButton(
-                            onClick = {
-                                if (availability == SDK_AVAILABLE) {
-                                    scope.launch {
-                                        scaffoldState.drawerState.open()
+                        if (isTopLevel(currentRoute)) {
+                            IconButton(
+                                onClick = {
+                                    if (availability == SDK_AVAILABLE) {
+                                        scope.launch {
+                                            scaffoldState.drawerState.open()
+                                        }
                                     }
                                 }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Menu,
+                                    contentDescription = stringResource(id = R.string.menu)
+                                )
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Menu,
-                                stringResource(id = R.string.menu)
-                            )
+                        } else {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(
+                                    imageVector = Icons.Filled.ArrowBack,
+                                    contentDescription = "Back"
+                                )
+                            }
                         }
                     }
                 )

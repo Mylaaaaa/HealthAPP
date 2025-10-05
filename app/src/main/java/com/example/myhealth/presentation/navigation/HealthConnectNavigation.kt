@@ -121,6 +121,44 @@ fun HealthConnectNavigation(
             )
         }
 
+        composable(Screen.WeightRecords.route) {
+            val viewModel: InputReadingsViewModel = viewModel(
+                factory = InputReadingsViewModelFactory(
+                    healthConnectManager = healthConnectManager
+                )
+            )
+            val permissionsGranted by viewModel.permissionsGranted
+            val readingsList by viewModel.readingsList
+            val permissions = viewModel.permissions
+            val weeklyAvg by viewModel.weeklyAvg
+            val onPermissionsResult = { viewModel.initialLoad() }
+            val permissionsLauncher =
+                rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
+                    onPermissionsResult()
+                }
+
+            // Entering the "Weight History" also forces a refresh.
+            LaunchedEffect(Unit) {
+                viewModel.initialLoad()
+            }
+
+            InputReadingsScreen(
+                permissionsGranted = permissionsGranted,
+                permissions = permissions,
+                uiState = viewModel.uiState,
+                onInsertClick = { weightInput -> viewModel.inputReadings(weightInput) },
+                weeklyAvg = weeklyAvg,
+                onDeleteClick = { uid -> viewModel.deleteWeightInput(uid) },
+                readingsList = readingsList,
+                onError = { exception ->
+                    showExceptionSnackbar(scaffoldState, scope, exception)
+                },
+                onPermissionsResult = { viewModel.initialLoad() },
+                onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
+            )
+        }
+
+
         composable(Screen.ExerciseSessionDetail.route + "/{$UID_NAV_ARGUMENT}") {
             val uid = it.arguments?.getString(UID_NAV_ARGUMENT)!!
             val viewModel: ExerciseSessionDetailViewModel = viewModel(

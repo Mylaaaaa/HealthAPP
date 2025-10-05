@@ -13,6 +13,7 @@ import androidx.compose.material.ScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -236,7 +237,13 @@ fun HealthConnectNavigation(
             val permissionsLauncher =
                 rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
                     onPermissionsResult()
+
                 }
+
+            // Ensure fresh data on every navigation to this screen
+            LaunchedEffect(Unit) {
+                viewModel.initialLoad()
+            }
 
             InputReadingsScreen(
                 permissionsGranted = permissionsGranted,

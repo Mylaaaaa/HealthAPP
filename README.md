@@ -8,6 +8,15 @@ in a single, unified interface.
 
 ---
 
+## 👨‍💻 Author
+
+**Zihan Wang**
+
+🌐 GitHub: [Mylaaaaa](https://github.com/Mylaaaaa)
+
+---
+
+
 ## 🌟 Features
 
 ### 💤 Sleep Session Tracking
@@ -76,23 +85,7 @@ in a single, unified interface.
 
 
 
-## 👨‍💻 Author
-
-**Zihan Wang**  
-IT / Computer Science Student  
-James Cook University (JCU), Singapore
-
-🌐 GitHub: [Mylaaaaa](https://github.com/Mylaaaaa)
-
----
 
 ## ⚠️ Disclaimer
 This application is intended **for academic and educational purposes only**.  
 All health data displayed in this project is **simulated**, not real medical information.
-
----
-
-## 📄 License
-
-MIT License © 2025 Zihan Wang  
-You are free to use, modify, and distribute this project with proper attribution.

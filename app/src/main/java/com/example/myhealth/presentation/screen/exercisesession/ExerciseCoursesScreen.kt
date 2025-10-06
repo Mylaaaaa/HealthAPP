@@ -7,63 +7,52 @@ import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/**
- * Simple curated course list similar to Keep.
- * You can later replace the static data with content from your backend.
- */
+// Curated course list with expandable descriptions.
 @Composable
 fun ExerciseCoursesScreen(modifier: Modifier = Modifier) {
     val courses = remember {
         listOf(
-            Course("HIIT basics", "12 min", "40s fast / 20s easy × 12. Warm up & cool down."),
-            Course("Form essentials", "15 min", "Squat / hinge / push / pull / core cues."),
-            Course("Zone-2 walk", "25 min", "Conversational pace (RPE 4-5)."),
-            Course("Full-body circuit", "30 min", "3 rounds × 5 moves. 45s on / 15s off.")
+            Course("HIIT basics", "12 min", "Short intervals to safely raise heart rate."),
+            Course("Form essentials", "15 min", "Posture cues for squats, push-ups, and hinges."),
+            Course("Zone-2 walk", "25 min", "Steady conversational pace for fat oxidation."),
+            Course("Full-body circuit", "30 min", "Strength + cardio rotation, minimal equipment.")
         )
     }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        courses.forEach { c ->
-            CourseCard(course = c)
-            Spacer(Modifier.height(8.dp))
-        }
+    Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        courses.forEach { CourseCard(it) }
     }
 }
 
-private data class Course(val title: String, val length: String, val brief: String)
+private data class Course(val name: String, val duration: String, val desc: String)
 
 @Composable
 private fun CourseCard(course: Course) {
     var expanded by remember { mutableStateOf(false) }
-
-    Card(elevation = 3.dp, shape = MaterialTheme.shapes.medium) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(16.dp)
-        ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column {
-                    Text(course.title, style = MaterialTheme.typography.subtitle1)
-                    Text(course.length, color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
+    Card(elevation = 3.dp) {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row {
+                    Icon(Icons.Default.Timer, contentDescription = null)
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(course.name, fontWeight = FontWeight.SemiBold)
+                        Text(course.duration, style = MaterialTheme.typography.body2)
+                    }
                 }
-                Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
+                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
             }
             AnimatedVisibility(visible = expanded) {
-                Column(Modifier.padding(top = 8.dp)) {
-                    Text(course.brief)
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { /* TODO: Navigate to player */ }) { Text("Start") }
-                }
+                Text(course.desc, Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.body2)
             }
         }
     }

@@ -1,18 +1,23 @@
 package com.example.myhealth.presentation.screen.exercisesession
 
 import android.content.Context
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -21,8 +26,8 @@ import java.time.DayOfWeek
 
 /* ---------------------------------------------------------------------------
    Planner screen
-   - First time: multi-step wizard (many questions)
-   - After saved: plan overview (daily + weekly) with "Re-customize" button
+   - First time: multi-step wizard (rich questionnaire)
+   - After saved: modern overview (chips + cards) with actions
    - Comments are in English for submission
    --------------------------------------------------------------------------- */
 
@@ -31,30 +36,25 @@ fun ExercisePlanScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val prefs = remember(context) { ExercisePrefs(context) }
 
-    // Load persisted profile (or a default)
+    // Load persisted profile or a default
     val persisted = prefs.loadProfileOrNull()
-    var profile by rememberSaveable(stateSaver = ProfileSaver) {
-        mutableStateOf(persisted ?: UserProfile())
-    }
-    // Separate boolean flag to control which UI to show
+    var profile by rememberSaveable(stateSaver = ProfileSaver) { mutableStateOf(persisted ?: UserProfile()) }
     var isSaved by rememberSaveable { mutableStateOf(persisted != null) }
 
     if (isSaved) {
         PlanOverview(
             profile = profile,
-            onReCustomise = {
-                // Go back to the wizard but keep current answers as draft
+            onReCustomise = { isSaved = false }, // back to wizard with current answers
+            onReset = {                      // clear storage and go to wizard
+                prefs.clear()
+                profile = UserProfile()
                 isSaved = false
             }
         )
     } else {
         PlannerWizard(
             initial = profile,
-            onSave = { newProfile ->
-                prefs.saveProfile(newProfile)
-                profile = newProfile
-                isSaved = true
-            }
+            onSave = { p -> prefs.saveProfile(p); profile = p; isSaved = true }
         )
     }
 }
@@ -68,12 +68,11 @@ enum class SessionLength { Short15, Standard30, Long45 }
 enum class TimeOfDay { Morning, Afternoon, Evening }
 enum class WorkoutType { Cardio, Strength, Mobility, HIIT, Core }
 
-/** User settings captured by the wizard. */
 data class UserProfile(
     val goal: Goal = Goal.LoseWeight,
     val experience: Experience = Experience.Beginner,
     val equipment: Equipment = Equipment.None,
-    val daysPerWeek: Int = 3,
+    val daysPerWeek: Int = 3, // now supports 1..7
     val sessionLength: SessionLength = SessionLength.Standard30,
     val preferIndoor: Boolean = true,
     val hasInjury: Boolean = false,
@@ -82,7 +81,7 @@ data class UserProfile(
     val heightCm: Int? = null,
     val weightKg: Float? = null,
     val targetWeightKg: Float? = null,
-    val availableDays: Set<DayOfWeek> = emptySet() // if empty, we auto-generate days
+    val availableDays: Set<DayOfWeek> = emptySet() // if empty, we auto-distribute
 )
 
 /* ------------------------------ PREFERENCES ------------------------------ */
@@ -90,22 +89,20 @@ data class UserProfile(
 private class ExercisePrefs(private val context: Context) {
     private val sp get() = context.getSharedPreferences("exercise_planner", Context.MODE_PRIVATE)
 
-    fun saveProfile(p: UserProfile) {
-        sp.edit {
-            putString("goal", p.goal.name)
-            putString("experience", p.experience.name)
-            putString("equipment", p.equipment.name)
-            putInt("daysPerWeek", p.daysPerWeek)
-            putString("sessionLength", p.sessionLength.name)
-            putBoolean("preferIndoor", p.preferIndoor)
-            putBoolean("hasInjury", p.hasInjury)
-            putString("preferredTypes", p.preferredTypes.joinToString(",") { it.name })
-            putString("timeOfDay", p.timeOfDay.name)
-            putString("heightCm", p.heightCm?.toString() ?: "")
-            putString("weightKg", p.weightKg?.toString() ?: "")
-            putString("targetWeightKg", p.targetWeightKg?.toString() ?: "")
-            putString("availableDays", p.availableDays.joinToString(",") { it.name })
-        }
+    fun saveProfile(p: UserProfile) = sp.edit {
+        putString("goal", p.goal.name)
+        putString("experience", p.experience.name)
+        putString("equipment", p.equipment.name)
+        putInt("daysPerWeek", p.daysPerWeek)
+        putString("sessionLength", p.sessionLength.name)
+        putBoolean("preferIndoor", p.preferIndoor)
+        putBoolean("hasInjury", p.hasInjury)
+        putString("preferredTypes", p.preferredTypes.joinToString(",") { it.name })
+        putString("timeOfDay", p.timeOfDay.name)
+        putString("heightCm", p.heightCm?.toString() ?: "")
+        putString("weightKg", p.weightKg?.toString() ?: "")
+        putString("targetWeightKg", p.targetWeightKg?.toString() ?: "")
+        putString("availableDays", p.availableDays.joinToString(",") { it.name })
     }
 
     fun loadProfileOrNull(): UserProfile? {
@@ -123,8 +120,7 @@ private class ExercisePrefs(private val context: Context) {
             preferredTypes = sp.getString("preferredTypes", "Cardio,Core")!!
                 .split(",").filter { it.isNotBlank() }
                 .mapNotNull { runCatching { WorkoutType.valueOf(it) }.getOrNull() }
-                .toSet()
-                .ifEmpty { setOf(WorkoutType.Cardio) },
+                .toSet().ifEmpty { setOf(WorkoutType.Cardio) },
             timeOfDay = runCatching { TimeOfDay.valueOf(sp.getString("timeOfDay", TimeOfDay.Morning.name)!!) }.getOrDefault(TimeOfDay.Morning),
             heightCm = parseInt(sp.getString("heightCm", "")),
             weightKg = parseFloat(sp.getString("weightKg", "")),
@@ -136,32 +132,21 @@ private class ExercisePrefs(private val context: Context) {
         )
     }
 
-    fun clear() { sp.edit { clear() } }
+    fun clear() = sp.edit { clear() }
 }
 
 /* ------------------------------ WIZARD UI -------------------------------- */
 
 @Composable
-private fun PlannerWizard(
-    initial: UserProfile,
-    onSave: (UserProfile) -> Unit
-) {
+private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
     var step by rememberSaveable { mutableStateOf(0) }
     var draft by rememberSaveable(stateSaver = ProfileSaver) { mutableStateOf(initial) }
+    val totalSteps = 11 // 0..10
 
-    // Steps: 0..10
-    val totalSteps = 11
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
+    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Text("Tell us about you", style = MaterialTheme.typography.h6)
         Spacer(Modifier.height(8.dp))
         LinearProgressIndicator(progress = (step + 1) / totalSteps.toFloat(), modifier = Modifier.fillMaxWidth())
-
         Spacer(Modifier.height(16.dp))
 
         when (step) {
@@ -175,32 +160,19 @@ private fun PlannerWizard(
                 draft = draft.copy(preferIndoor = indoor, hasInjury = injury)
             }
             7 -> TimeOfDayStep(draft.timeOfDay) { draft = draft.copy(timeOfDay = it) }
-            8 -> BodyMetricsStep(
-                height = draft.heightCm,
-                weight = draft.weightKg,
-                target = draft.targetWeightKg
-            ) { h, w, t -> draft = draft.copy(heightCm = h, weightKg = w, targetWeightKg = t) }
-            9 -> AvailabilityStep(
-                selected = draft.availableDays
-            ) { days -> draft = draft.copy(availableDays = days) }
+            8 -> BodyMetricsStep(draft.heightCm, draft.weightKg, draft.targetWeightKg) { h, w, t ->
+                draft = draft.copy(heightCm = h, weightKg = w, targetWeightKg = t)
+            }
+            9 -> AvailabilityStep(draft.availableDays) { days -> draft = draft.copy(availableDays = days) }
             10 -> SummaryStep(draft)
         }
 
         Spacer(Modifier.height(16.dp))
-
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            OutlinedButton(
-                enabled = step > 0,
-                onClick = { step -= 1 }
-            ) { Text("Back") }
-
-            if (step < totalSteps - 1) {
-                Button(onClick = { step += 1 }) { Text("Next") }
-            } else {
-                Button(onClick = { onSave(draft) }) { Text("Save my plan") }
-            }
+            OutlinedButton(enabled = step > 0, onClick = { step -= 1 }) { Text("Back") }
+            if (step < totalSteps - 1) Button(onClick = { step += 1 }) { Text("Next") }
+            else Button(onClick = { onSave(draft) }) { Text("Save my plan") }
         }
-
         Spacer(Modifier.height(8.dp))
         Text(
             "You can re-customize later from the plan screen.",
@@ -212,49 +184,42 @@ private fun PlannerWizard(
 
 /* ----------------------------- WIZARD STEPS ------------------------------ */
 
-@Composable
-private fun GoalStep(selected: Goal, onSelect: (Goal) -> Unit) {
-    StepCard(title = "Your primary goal") {
+@Composable private fun GoalStep(selected: Goal, onSelect: (Goal) -> Unit) {
+    StepCard("Your primary goal") {
         ChoiceRadio("Lose weight", selected == Goal.LoseWeight) { onSelect(Goal.LoseWeight) }
         ChoiceRadio("Gain muscle", selected == Goal.GainMuscle) { onSelect(Goal.GainMuscle) }
         ChoiceRadio("Maintain", selected == Goal.Maintain) { onSelect(Goal.Maintain) }
         ChoiceRadio("Improve endurance", selected == Goal.ImproveEndurance) { onSelect(Goal.ImproveEndurance) }
     }
 }
-
-@Composable
-private fun ExperienceStep(selected: Experience, onSelect: (Experience) -> Unit) {
-    StepCard(title = "Training experience") {
+@Composable private fun ExperienceStep(selected: Experience, onSelect: (Experience) -> Unit) {
+    StepCard("Training experience") {
         ChoiceRadio("Beginner", selected == Experience.Beginner) { onSelect(Experience.Beginner) }
         ChoiceRadio("Intermediate", selected == Experience.Intermediate) { onSelect(Experience.Intermediate) }
         ChoiceRadio("Advanced", selected == Experience.Advanced) { onSelect(Experience.Advanced) }
     }
 }
-
-@Composable
-private fun EquipmentStep(selected: Equipment, onSelect: (Equipment) -> Unit) {
-    StepCard(title = "Equipment availability") {
+@Composable private fun EquipmentStep(selected: Equipment, onSelect: (Equipment) -> Unit) {
+    StepCard("Equipment availability") {
         ChoiceRadio("No equipment", selected == Equipment.None) { onSelect(Equipment.None) }
         ChoiceRadio("Minimal (bands/dumbbells)", selected == Equipment.Minimal) { onSelect(Equipment.Minimal) }
         ChoiceRadio("Full gym", selected == Equipment.FullGym) { onSelect(Equipment.FullGym) }
     }
 }
-
-@Composable
-private fun DaysPerWeekStep(value: Int, onChange: (Int) -> Unit) {
-    StepCard(title = "How many days per week?") {
+@Composable private fun DaysPerWeekStep(value: Int, onChange: (Int) -> Unit) {
+    StepCard("How many days per week?") {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            (2..6).forEach { d ->
+            (1..7).forEach { d ->
                 ChoiceChip(text = "$d", selected = value == d) { onChange(d) }
                 Spacer(Modifier.width(8.dp))
             }
         }
+        Spacer(Modifier.height(6.dp))
+        Text("You can also mark specific available days later.", style = MaterialTheme.typography.body2)
     }
 }
-
-@Composable
-private fun SessionLengthStep(selected: SessionLength, onSelect: (SessionLength) -> Unit) {
-    StepCard(title = "Typical session length") {
+@Composable private fun SessionLengthStep(selected: SessionLength, onSelect: (SessionLength) -> Unit) {
+    StepCard("Typical session length") {
         ChoiceChip("~15 min", selected == SessionLength.Short15) { onSelect(SessionLength.Short15) }
         Spacer(Modifier.width(8.dp))
         ChoiceChip("~30 min", selected == SessionLength.Standard30) { onSelect(SessionLength.Standard30) }
@@ -262,17 +227,13 @@ private fun SessionLengthStep(selected: SessionLength, onSelect: (SessionLength)
         ChoiceChip("~45+ min", selected == SessionLength.Long45) { onSelect(SessionLength.Long45) }
     }
 }
-
-@Composable
-private fun PreferredTypesStep(selected: Set<WorkoutType>, onChange: (Set<WorkoutType>) -> Unit) {
-    StepCard(title = "Preferred workout types") {
+@Composable private fun PreferredTypesStep(selected: Set<WorkoutType>, onChange: (Set<WorkoutType>) -> Unit) {
+    StepCard("Preferred workout types") {
         val all = listOf(WorkoutType.Cardio, WorkoutType.Strength, WorkoutType.Mobility, WorkoutType.HIIT, WorkoutType.Core)
         Row(Modifier.fillMaxWidth()) {
             all.forEach { t ->
-                val s = selected.contains(t)
-                ChoiceChip(text = t.name, selected = s) {
-                    onChange(if (s) selected - t else selected + t)
-                }
+                val s = t in selected
+                ChoiceChip(t.name, s) { onChange(if (s) selected - t else selected + t) }
                 Spacer(Modifier.width(8.dp))
             }
         }
@@ -280,10 +241,8 @@ private fun PreferredTypesStep(selected: Set<WorkoutType>, onChange: (Set<Workou
         Text("Tip: choose 2–3 types you enjoy the most.", style = MaterialTheme.typography.body2)
     }
 }
-
-@Composable
-private fun EnvironmentStep(indoor: Boolean, injury: Boolean, onChange: (Boolean, Boolean) -> Unit) {
-    StepCard(title = "Environment & limitations") {
+@Composable private fun EnvironmentStep(indoor: Boolean, injury: Boolean, onChange: (Boolean, Boolean) -> Unit) {
+    StepCard("Environment & limitations") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             ChoiceChip("Indoor", indoor) { onChange(true, injury) }
             Spacer(Modifier.width(8.dp))
@@ -297,10 +256,8 @@ private fun EnvironmentStep(indoor: Boolean, injury: Boolean, onChange: (Boolean
         }
     }
 }
-
-@Composable
-private fun TimeOfDayStep(selected: TimeOfDay, onSelect: (TimeOfDay) -> Unit) {
-    StepCard(title = "Preferred time of day") {
+@Composable private fun TimeOfDayStep(selected: TimeOfDay, onSelect: (TimeOfDay) -> Unit) {
+    StepCard("Preferred time of day") {
         Row {
             ChoiceChip("Morning", selected == TimeOfDay.Morning) { onSelect(TimeOfDay.Morning) }
             Spacer(Modifier.width(8.dp))
@@ -310,37 +267,22 @@ private fun TimeOfDayStep(selected: TimeOfDay, onSelect: (TimeOfDay) -> Unit) {
         }
     }
 }
-
-@Composable
-private fun BodyMetricsStep(
-    height: Int?,
-    weight: Float?,
-    target: Float?,
-    onChange: (Int?, Float?, Float?) -> Unit
-) {
+@Composable private fun BodyMetricsStep(height: Int?, weight: Float?, target: Float?, onChange: (Int?, Float?, Float?) -> Unit) {
     var h by rememberSaveable { mutableStateOf(height?.toString() ?: "") }
     var w by rememberSaveable { mutableStateOf(weight?.toString() ?: "") }
     var t by rememberSaveable { mutableStateOf(target?.toString() ?: "") }
-
-    StepCard(title = "Body metrics (optional)") {
+    StepCard("Body metrics (optional)") {
         LabeledField("Height (cm)", h) { h = it }
         Spacer(Modifier.height(8.dp))
         LabeledField("Weight (kg)", w) { w = it }
         Spacer(Modifier.height(8.dp))
         LabeledField("Target weight (kg)", t) { t = it }
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = {
-            onChange(h.toIntOrNull(), w.toFloatOrNull(), t.toFloatOrNull())
-        }) { Text("Apply") }
+        OutlinedButton(onClick = { onChange(h.toIntOrNull(), w.toFloatOrNull(), t.toFloatOrNull()) }) { Text("Apply") }
     }
 }
-
-@Composable
-private fun AvailabilityStep(
-    selected: Set<DayOfWeek>,
-    onChange: (Set<DayOfWeek>) -> Unit
-) {
-    StepCard(title = "Which days are you available?") {
+@Composable private fun AvailabilityStep(selected: Set<DayOfWeek>, onChange: (Set<DayOfWeek>) -> Unit) {
+    StepCard("Which days are you available?") {
         val all = listOf(
             DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
             DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY
@@ -350,22 +292,18 @@ private fun AvailabilityStep(
                 Row {
                     row.forEach { d ->
                         val s = d in selected
-                        ChoiceChip(d.name.take(3), s) {
-                            onChange(if (s) selected - d else selected + d)
-                        }
+                        ChoiceChip(d.name.take(3), s) { onChange(if (s) selected - d else selected + d) }
                         Spacer(Modifier.width(8.dp))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
             }
         }
-        Text("If none selected, days will be auto-distributed by frequency.", style = MaterialTheme.typography.body2)
+        Text("If none selected, days will be auto-distributed.", style = MaterialTheme.typography.body2)
     }
 }
-
-@Composable
-private fun SummaryStep(draft: UserProfile) {
-    StepCard(title = "Summary") {
+@Composable private fun SummaryStep(draft: UserProfile) {
+    StepCard("Summary") {
         Text("Goal: ${draft.goal}")
         Text("Experience: ${draft.experience}")
         Text("Equipment: ${draft.equipment}")
@@ -380,62 +318,193 @@ private fun SummaryStep(draft: UserProfile) {
     }
 }
 
-/* ----------------------------- SAVED VIEW UI ----------------------------- */
+/* ----------------------------- SAVED VIEW (PRETTY) ----------------------- */
 
 @Composable
-private fun PlanOverview(profile: UserProfile, onReCustomise: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+private fun PlanOverview(
+    profile: UserProfile,
+    onReCustomise: () -> Unit,
+    onReset: () -> Unit
+) {
+    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+
+        // Header with one clear "Re-customize" and one "Reset plan"
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Your plan", style = MaterialTheme.typography.h6)
-            TextButton(onClick = onReCustomise) {
-                Icon(Icons.Default.RestartAlt, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("Re-customize")
+            // --- confirmation dialog state ---
+            var showConfirmDialog by remember { mutableStateOf(false) }
+
+            Row {
+                TextButton(onClick = { showConfirmDialog = true }) {
+                    Icon(Icons.Default.Tune, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Re-customize")
+                }
+            }
+
+// --- confirmation dialog ---
+            if (showConfirmDialog) {
+                AlertDialog(
+                    onDismissRequest = { showConfirmDialog = false },
+                    title = { Text("Re-customize Plan") },
+                    text = {
+                        Text(
+                            "Do you want to re-customize your plan? Your current settings will be replaced once you save the new one."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showConfirmDialog = false
+                            onReCustomise()
+                        }) {
+                            Text("Yes, re-customize")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showConfirmDialog = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+
+        }
+
+        Spacer(Modifier.height(12.dp))
+        // Profile summary card with chips
+        Card(elevation = 3.dp, shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GoalBadge(profile.goal)
+                    Spacer(Modifier.width(12.dp))
+                    Text(titleForGoal(profile.goal), style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
+                }
+                Spacer(Modifier.height(10.dp))
+                FlowChips(
+                    listOf(
+                        "Exp: ${profile.experience.name}",
+                        "Equip: ${profile.equipment.name}",
+                        "${profile.daysPerWeek} days/wk",
+                        when (profile.sessionLength) {
+                            SessionLength.Short15 -> "~15 min"
+                            SessionLength.Standard30 -> "~30 min"
+                            SessionLength.Long45 -> "~45+ min"
+                        },
+                        profile.timeOfDay.name,
+                        if (profile.preferIndoor) "Indoor" else "Outdoor",
+                        if (profile.hasInjury) "Injury aware" else "No injury"
+                    ) + profile.preferredTypes.map { it.name }
+                )
+                if (profile.heightCm != null || profile.weightKg != null || profile.targetWeightKg != null) {
+                    Spacer(Modifier.height(8.dp)); Divider(); Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Body: ${profile.heightCm ?: "-"} cm / ${profile.weightKg ?: "-"} kg → target ${profile.targetWeightKg ?: "-"} kg",
+                        style = MaterialTheme.typography.body2
+                    )
+                }
             }
         }
 
+        Spacer(Modifier.height(16.dp))
+        SectionTitle(icon = Icons.Default.Today, title = "Weekly plan")
         Spacer(Modifier.height(8.dp))
-        ProfileSummary(profile)
+        WeeklyPlanPretty(generateWeeklyPlan(profile, computeSchedule(profile)))
 
-        Spacer(Modifier.height(12.dp))
-        Text("Weekly plan", style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
+        Spacer(Modifier.height(16.dp))
+        SectionTitle(icon = Icons.Default.CheckCircle, title = "Daily suggestions")
         Spacer(Modifier.height(8.dp))
-        WeeklyPlanCards(generateWeeklyPlan(profile))
-
-        Spacer(Modifier.height(12.dp))
-        Text("Daily suggestions", style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
-        Spacer(Modifier.height(8.dp))
-        DaySuggestionCard(generateDailySuggestion(profile))
+        DailySuggestionPretty(generateDailySuggestion(profile))
     }
 }
 
-@Composable
-private fun ProfileSummary(p: UserProfile) {
-    Card(elevation = 2.dp) {
-        Column(Modifier.padding(14.dp)) {
-            Text("Goal: ${p.goal.name}")
-            Text("Experience: ${p.experience.name}")
-            Text("Equipment: ${p.equipment.name}")
-            Text("Days/week: ${p.daysPerWeek}")
-            Text("Session length: ${p.sessionLength.name}")
-            Text("Preferred: ${p.preferredTypes.joinToString()}")
-            Text("Environment: ${if (p.preferIndoor) "Indoor" else "Outdoor"}")
-            Text("Injury: ${if (p.hasInjury) "Yes" else "No"}")
-            Text("Time of day: ${p.timeOfDay.name}")
-            if (p.heightCm != null || p.weightKg != null || p.targetWeightKg != null) {
-                Text("Body: ${p.heightCm ?: "-"} cm / ${p.weightKg ?: "-"} kg → target ${p.targetWeightKg ?: "-"} kg")
+/* ---------- Pretty components ---------- */
+
+@Composable private fun SectionTitle(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colors.primary)
+        Spacer(Modifier.width(8.dp))
+        Text(title, style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
+    }
+}
+@Composable private fun GoalBadge(goal: Goal) {
+    val color = when (goal) {
+        Goal.LoseWeight -> MaterialTheme.colors.primary.copy(alpha = 0.15f)
+        Goal.GainMuscle -> Color(0xFFEDC2FF).copy(alpha = 0.45f)
+        Goal.Maintain -> Color(0xFFB2DFDB)
+        Goal.ImproveEndurance -> Color(0xFFBBDEFB)
+    }
+    Box(Modifier.size(34.dp).clip(CircleShape).background(color), contentAlignment = Alignment.Center) {
+        Icon(
+            when (goal) {
+                Goal.LoseWeight -> Icons.Default.FavoriteBorder
+                Goal.GainMuscle -> Icons.Default.FitnessCenter
+                Goal.Maintain -> Icons.Default.CheckCircle
+                Goal.ImproveEndurance -> Icons.Default.DirectionsRun
+            },
+            contentDescription = null
+        )
+    }
+}
+@Composable private fun FlowChips(labels: List<String>) {
+    // Simple wrap without extra dependencies
+    Column {
+        var line = mutableListOf<String>()
+        labels.forEachIndexed { i, s ->
+            line += s
+            val isBreak = (i == labels.lastIndex) || line.joinToString(" • ").length > 32
+            if (isBreak) {
+                Row { line.forEach { InfoChip(it); Spacer(Modifier.width(6.dp)) } }
+                Spacer(Modifier.height(6.dp)); line = mutableListOf()
             }
-            val avail = p.availableDays.joinToString { it.name.take(3) }
-            Text("Available days: ${if (avail.isBlank()) "Auto" else avail}")
+        }
+    }
+}
+@Composable private fun InfoChip(text: String) {
+    Surface(
+        color = MaterialTheme.colors.onSurface.copy(alpha = 0.06f),
+        contentColor = MaterialTheme.colors.onSurface,
+        shape = RoundedCornerShape(50),
+        elevation = 0.dp
+    ) { Text(text, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.caption) }
+}
+@Composable private fun WeeklyPlanPretty(plan: ExercisePlan) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        plan.days.forEach { day ->
+            Card(elevation = 2.dp, shape = RoundedCornerShape(14.dp)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp)) {
+                    DayBadge(day.title.take(3))
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(day.title, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(6.dp))
+                        day.items.forEach { Text("• $it", style = MaterialTheme.typography.body2) }
+                    }
+                }
+            }
+        }
+    }
+}
+@Composable private fun DayBadge(threeLetter: String) {
+    Box(
+        Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colors.primary.copy(alpha = 0.12f)),
+        contentAlignment = Alignment.Center
+    ) { Text(threeLetter.uppercase(), fontWeight = FontWeight.Bold, color = MaterialTheme.colors.primary) }
+}
+@Composable private fun DailySuggestionPretty(lines: List<String>) {
+    Card(elevation = 2.dp, shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            lines.forEachIndexed { idx, line ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        when (idx) { 0 -> Icons.Default.LocalFireDepartment; 1 -> Icons.Default.TaskAlt; else -> Icons.Default.SelfImprovement },
+                        contentDescription = null,
+                        tint = MaterialTheme.colors.primary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(line, style = MaterialTheme.typography.body2)
+                }
+            }
         }
     }
 }
@@ -445,37 +514,45 @@ private fun ProfileSummary(p: UserProfile) {
 data class PlanDay(val title: String, val items: List<String>)
 data class ExercisePlan(val days: List<PlanDay>)
 
-@Composable
-private fun WeeklyPlanCards(plan: ExercisePlan) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        plan.days.forEach { day ->
-            Card(elevation = 2.dp) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(day.title, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(6.dp))
-                    day.items.forEach { Text("• $it", style = MaterialTheme.typography.body2) }
-                }
-            }
+/** Compute which days of week to schedule for, honoring selected availability and daysPerWeek (1..7). */
+private fun computeSchedule(p: UserProfile): List<DayOfWeek> {
+    val all = listOf(
+        DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+        DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY
+    )
+    val target = p.daysPerWeek.coerceIn(1, 7)
+
+    // If user selected availability, start from those; otherwise use a sensible default spread.
+    val base = if (p.availableDays.isNotEmpty()) {
+        p.availableDays.toList().sortedBy { it.value }
+    } else {
+        when (target) {
+            1 -> listOf(DayOfWeek.WEDNESDAY) // center of week
+            2 -> listOf(DayOfWeek.TUESDAY, DayOfWeek.FRIDAY)
+            3 -> listOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY)
+            4 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.SATURDAY)
+            5 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SUNDAY)
+            6 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY)
+            else -> all // 7
         }
     }
-}
 
-@Composable
-private fun DaySuggestionCard(lines: List<String>) {
-    Card(elevation = 2.dp) {
-        Column(Modifier.padding(14.dp)) {
-            lines.forEach { Text("• $it", style = MaterialTheme.typography.body2) }
-        }
+    // If base is shorter than requested, append more weekdays in order to reach target.
+    val result = mutableListOf<DayOfWeek>()
+    result += base
+    if (result.size < target) {
+        val rest = all.filter { it !in result }
+        result += rest
     }
+    return result.take(target)
 }
 
-private fun generateWeeklyPlan(p: UserProfile): ExercisePlan {
+private fun generateWeeklyPlan(p: UserProfile, schedule: List<DayOfWeek>): ExercisePlan {
     val baseCardio = when (p.sessionLength) {
         SessionLength.Short15 -> "Zone-2 walk/jog · 15 min"
         SessionLength.Standard30 -> "Zone-2 cardio · 30 min"
         SessionLength.Long45 -> "Zone-2 cardio · 45 min"
     }
-
     val hiit = if (WorkoutType.HIIT in p.preferredTypes)
         when (p.sessionLength) {
             SessionLength.Short15 -> "HIIT · 6×30s on/30s off"
@@ -496,43 +573,23 @@ private fun generateWeeklyPlan(p: UserProfile): ExercisePlan {
     val mobility = "Mobility & stretching · 10–15 min"
     val core = "Core stability · 8–12 min"
 
-    // Injury-safe cardio override
-    val safeCardio = if (p.hasInjury) "Low-impact cardio (bike/elliptical) · ${
-        when (p.sessionLength) {
-            SessionLength.Short15 -> "15 min"
-            SessionLength.Standard30 -> "30 min"
-            SessionLength.Long45 -> "45 min"
-        }
-    }" else baseCardio
+    val safeCardio = if (p.hasInjury) "Low-impact cardio (bike/elliptical) · " + when (p.sessionLength) {
+        SessionLength.Short15 -> "15 min"; SessionLength.Standard30 -> "30 min"; SessionLength.Long45 -> "45 min"
+    } else baseCardio
 
-    // Weekday schedule
-    val schedule: List<DayOfWeek> = if (p.availableDays.isNotEmpty()) {
-        p.availableDays.toList().sortedBy { it.value }
-    } else {
-        when (p.daysPerWeek) {
-            2 -> listOf(DayOfWeek.TUESDAY, DayOfWeek.FRIDAY)
-            3 -> listOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY)
-            4 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.SATURDAY)
-            5 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SUNDAY)
-            6 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY)
-            else -> listOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY)
-        }
-    }.take(p.daysPerWeek)
-
-    val dayLabel = { d: DayOfWeek -> d.name.take(3).replaceFirstChar { it.uppercase() } }
+    val dayLabel = { d: DayOfWeek -> d.name.take(3) }
 
     val days = schedule.mapIndexed { idx, d ->
         val items = buildList {
             val strengthFirst = (p.goal == Goal.GainMuscle) || (WorkoutType.Strength in p.preferredTypes && idx % 2 == 0)
             val cardioFirst = (p.goal != Goal.GainMuscle) || (WorkoutType.Cardio in p.preferredTypes && idx % 2 == 1)
-
             if (strengthFirst) add(strength)
             if (cardioFirst) add(safeCardio)
             if (hiit != null && (p.goal == Goal.LoseWeight || p.goal == Goal.ImproveEndurance) && idx % 3 == 2) add(hiit)
             if (WorkoutType.Mobility in p.preferredTypes) add(mobility)
             if (WorkoutType.Core in p.preferredTypes) add(core)
         }
-        PlanDay("${dayLabel(d)} – ${labelForGoal(p.goal)} focus", items)
+        PlanDay("${dayLabel(d).uppercase()} – ${labelForGoal(p.goal)} focus", items)
     }
 
     return ExercisePlan(days)
@@ -559,65 +616,36 @@ private fun labelForGoal(g: Goal) = when (g) {
 
 /* -------------------------- UI HELPERS / SAVERS -------------------------- */
 
-@Composable
-private fun StepCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+@Composable private fun StepCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Text(title, style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
     Spacer(Modifier.height(8.dp))
-    Card(elevation = 2.dp) { Column(Modifier.padding(14.dp), content = content) }
+    Card(elevation = 2.dp, shape = RoundedCornerShape(14.dp)) { Column(Modifier.padding(14.dp), content = content) }
 }
-
-@Composable
-private fun ChoiceRadio(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable { onClick() },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Spacer(Modifier.width(8.dp))
-        Text(label)
+@Composable private fun ChoiceRadio(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable { onClick() }, verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = selected, onClick = onClick); Spacer(Modifier.width(8.dp)); Text(label)
     }
 }
-
-@Composable
-private fun ChoiceChip(text: String, selected: Boolean, onClick: () -> Unit) {
+@Composable private fun ChoiceChip(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        color = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.15f) else MaterialTheme.colors.surface,
+        color = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.15f) else MaterialTheme.colors.onSurface.copy(alpha = 0.06f),
         contentColor = if (selected) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface,
-        shape = MaterialTheme.shapes.small,
-        elevation = if (selected) 4.dp else 1.dp,
+        shape = RoundedCornerShape(50), elevation = 0.dp,
         modifier = Modifier.clickable { onClick() }
-    ) { Text(text, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
+    ) { Text(text, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.caption) }
 }
-
-@Composable
-private fun LabeledField(label: String, value: String, onChange: (String) -> Unit) {
-    Column {
-        Text(label, style = MaterialTheme.typography.caption)
-        OutlinedTextField(
-            value = value,
-            onValueChange = onChange,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+@Composable private fun LabeledField(label: String, value: String, onChange: (String) -> Unit) {
+    Column { Text(label, style = MaterialTheme.typography.caption); OutlinedTextField(value, onValueChange = onChange, singleLine = true, modifier = Modifier.fillMaxWidth()) }
 }
 
 /** Saver for UserProfile (receiver is SaverScope, matches Compose API). */
 private val ProfileSaver = listSaver<UserProfile, String>(
     save = { p ->
         listOf(
-            p.goal.name,
-            p.experience.name,
-            p.equipment.name,
-            p.daysPerWeek.toString(),
-            p.sessionLength.name,
-            p.preferIndoor.toString(),
-            p.hasInjury.toString(),
-            p.preferredTypes.joinToString(",") { it.name },
-            p.timeOfDay.name,
-            p.heightCm?.toString() ?: "",
-            p.weightKg?.toString() ?: "",
-            p.targetWeightKg?.toString() ?: "",
+            p.goal.name, p.experience.name, p.equipment.name, p.daysPerWeek.toString(), p.sessionLength.name,
+            p.preferIndoor.toString(), p.hasInjury.toString(),
+            p.preferredTypes.joinToString(",") { it.name }, p.timeOfDay.name,
+            p.heightCm?.toString() ?: "", p.weightKg?.toString() ?: "", p.targetWeightKg?.toString() ?: "",
             p.availableDays.joinToString(",") { it.name }
         )
     },
@@ -630,16 +658,22 @@ private val ProfileSaver = listSaver<UserProfile, String>(
             sessionLength = runCatching { SessionLength.valueOf(l[4]) }.getOrDefault(SessionLength.Standard30),
             preferIndoor = l[5].toBooleanStrictOrNull() ?: true,
             hasInjury = l[6].toBooleanStrictOrNull() ?: false,
-            preferredTypes = l[7].split(",").filter { it.isNotBlank() }
-                .mapNotNull { runCatching { WorkoutType.valueOf(it) }.getOrNull() }.toSet()
+            preferredTypes = l[7].split(",").filter { it.isNotBlank() }.mapNotNull { runCatching { WorkoutType.valueOf(it) }.getOrNull() }.toSet()
                 .ifEmpty { setOf(WorkoutType.Cardio) },
             timeOfDay = runCatching { TimeOfDay.valueOf(l[8]) }.getOrDefault(TimeOfDay.Morning),
             heightCm = l[9].toIntOrNull(),
             weightKg = l[10].toFloatOrNull(),
             targetWeightKg = l[11].toFloatOrNull(),
-            availableDays = l.getOrNull(12)?.split(",")?.filter { it.isNotBlank() }?.mapNotNull {
-                runCatching { DayOfWeek.valueOf(it) }.getOrNull()
-            }?.toSet() ?: emptySet()
+            availableDays = l.getOrNull(12)?.split(",")?.filter { it.isNotBlank() }?.mapNotNull { runCatching { DayOfWeek.valueOf(it) }.getOrNull() }?.toSet()
+                ?: emptySet()
         )
     }
 )
+
+/* --------- Titles --------- */
+private fun titleForGoal(goal: Goal) = when (goal) {
+    Goal.LoseWeight -> "Fat-loss program"
+    Goal.GainMuscle -> "Muscle program"
+    Goal.Maintain -> "Balanced program"
+    Goal.ImproveEndurance -> "Endurance program"
+}

@@ -2,10 +2,12 @@ package com.example.myhealth.presentation.screen.exercisesession
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
@@ -15,6 +17,8 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -25,7 +29,9 @@ import com.example.myhealth.presentation.component.ExerciseSessionRow
 import java.util.UUID
 import kotlin.math.max
 
-
+/* =============================================================================
+ * Entry screen – wraps permission check, onboarding wizard and the main plan UI
+ * ============================================================================= */
 @Composable
 fun ExerciseSessionScreen(
     permissions: Set<String>,
@@ -42,29 +48,25 @@ fun ExerciseSessionScreen(
     onPermissionsLaunch: (Set<String>) -> Unit = {},
     onBackClick: () -> Unit = {}
 ) {
-
+    // Deduplicate error toasts/snackbars across recompositions
     val errorId = rememberSaveable { mutableStateOf(UUID.randomUUID()) }
-
 
     LaunchedEffect(uiState) {
         if (uiState is ExerciseSessionViewModel.UiState.Uninitialized) onPermissionsResult()
         if (uiState is ExerciseSessionViewModel.UiState.Error && errorId.value != uiState.uuid) {
-            onError(uiState.exception); errorId.value = uiState.uuid
+            onError(uiState.exception)
+            errorId.value = uiState.uuid
         }
     }
     if (uiState == ExerciseSessionViewModel.UiState.Uninitialized) return
 
-
+    // Local persisted profile (SharedPreferences-backed)
     val prefs = rememberExercisePrefs()
-
-
     var hasProfile by rememberSaveable { mutableStateOf(false) }
     var step by rememberSaveable { mutableStateOf(0) }
-
-
     var profile by rememberSaveable(stateSaver = UserProfileSaver) { mutableStateOf(UserProfile()) }
 
-    // First attempt to read the saved configuration
+    // Load saved profile once on entry
     LaunchedEffect(Unit) {
         prefs.loadProfileOrNull()?.let {
             profile = it
@@ -72,21 +74,23 @@ fun ExerciseSessionScreen(
         }
     }
 
-    // plan
+    // Generate current plan when profile is available
     val plan by remember(profile, hasProfile) {
         mutableStateOf(if (hasProfile) generatePlan(profile) else null)
     }
 
-    // Permission barrier
+    // Permission gate first
     if (!permissionsGranted) {
         PermissionGate(permissions = permissions, onPermissionsLaunch = onPermissionsLaunch)
         return
     }
 
-    // Keep only the content area (the outer layer already has a top bar), avoiding double top bars.
+    // Screen body (no top bar here; host Scaffold manages it)
+    val bg = Brush.verticalGradient(listOf(Color(0xFFF7FAFC), Color(0xFFE8F5E9)))
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(bg)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         if (!hasProfile) {
@@ -97,9 +101,10 @@ fun ExerciseSessionScreen(
                 onPrev = { step = max(0, step - 1) },
                 onNext = { step += 1 },
                 onFinish = {
+                    // Minimal validation; you can expand it
                     if (profile.heightCm > 0 && profile.weightKg > 0) {
                         hasProfile = true
-                        prefs.saveProfile(profile)  // 完成时保存
+                        prefs.saveProfile(profile)
                     }
                 }
             )
@@ -117,7 +122,7 @@ fun ExerciseSessionScreen(
                 onDetailsClick = onDetailsClick,
                 onDeleteClick = onDeleteClick,
                 onAdjustPlan = {
-                    // Clear the archives and return to the guide.
+                    // Clear saved profile and return to onboarding
                     prefs.clearProfile()
                     hasProfile = false
                     step = 0
@@ -127,9 +132,9 @@ fun ExerciseSessionScreen(
     }
 }
 
-/* =================================================================================
- * Models & Saver
- * ================================================================================= */
+/* =============================================================================
+ * Profile model + saver
+ * ============================================================================= */
 private enum class Goal { LoseWeight, GainWeight, GainMuscle, Maintain }
 private enum class Level { Beginner, Intermediate, Advanced }
 private enum class Equipment { None, Bands, Dumbbells, Gym }
@@ -147,7 +152,6 @@ private data class UserProfile(
     val likes: String = "",
     val dislikes: String = ""
 )
-
 
 private val UserProfileSaver = listSaver<UserProfile, Any?>(
     save = {
@@ -182,7 +186,9 @@ private val UserProfileSaver = listSaver<UserProfile, Any?>(
     }
 )
 
-
+/* =============================================================================
+ * Simple local persistence for the profile
+ * ============================================================================= */
 @Composable
 private fun rememberExercisePrefs(): ExercisePrefs {
     val ctx = LocalContext.current
@@ -231,9 +237,9 @@ private fun decode(s: String): UserProfile {
     )
 }
 
-/* =================================================================================
- * Permission Gate
- * ================================================================================= */
+/* =============================================================================
+ * Permission gate – shown when HCA permissions are missing
+ * ============================================================================= */
 @Composable
 private fun PermissionGate(
     permissions: Set<String>,
@@ -254,9 +260,9 @@ private fun PermissionGate(
     }
 }
 
-/* =================================================================================
- * Onboarding Wizard（6步）
- * ================================================================================= */
+/* =============================================================================
+ * Onboarding wizard (6 steps)
+ * ============================================================================= */
 @Composable
 private fun OnboardingWizard(
     step: Int,
@@ -288,12 +294,14 @@ private fun OnboardingWizard(
     }
 }
 
-@Composable private fun StepIndicator(current: Int, total: Int) {
-    Text("Step ${current + 1} of ${total + 1}", style = MaterialTheme.typography.subtitle1)
+@Composable
+private fun StepIndicator(current: Int, total: Int) {
+    Text("Step ${current + 1} of $total", style = MaterialTheme.typography.subtitle1)
 }
 
 /* --- Step 0: Goal --- */
-@Composable private fun StepGoal(
+@Composable
+private fun StepGoal(
     profile: UserProfile,
     onProfileChange: (UserProfile) -> Unit,
     onNext: () -> Unit
@@ -311,7 +319,8 @@ private fun OnboardingWizard(
 }
 
 /* --- Step 1: Height / Weight --- */
-@Composable private fun StepBasic(
+@Composable
+private fun StepBasic(
     profile: UserProfile,
     onProfileChange: (UserProfile) -> Unit,
     onPrev: () -> Unit,
@@ -348,7 +357,8 @@ private fun OnboardingWizard(
 }
 
 /* --- Step 2: Target weight --- */
-@Composable private fun StepTarget(
+@Composable
+private fun StepTarget(
     profile: UserProfile,
     onProfileChange: (UserProfile) -> Unit,
     onPrev: () -> Unit,
@@ -377,7 +387,8 @@ private fun OnboardingWizard(
 }
 
 /* --- Step 3: Level & Equipment --- */
-@Composable private fun StepLevelEquipment(
+@Composable
+private fun StepLevelEquipment(
     profile: UserProfile,
     onProfileChange: (UserProfile) -> Unit,
     onPrev: () -> Unit,
@@ -410,7 +421,8 @@ private fun OnboardingWizard(
 }
 
 /* --- Step 4: Frequency & duration --- */
-@Composable private fun StepFrequency(
+@Composable
+private fun StepFrequency(
     profile: UserProfile,
     onProfileChange: (UserProfile) -> Unit,
     onPrev: () -> Unit,
@@ -440,7 +452,8 @@ private fun OnboardingWizard(
 }
 
 /* --- Step 5: Injuries & limits --- */
-@Composable private fun StepLimits(
+@Composable
+private fun StepLimits(
     profile: UserProfile,
     onProfileChange: (UserProfile) -> Unit,
     onPrev: () -> Unit,
@@ -464,9 +477,9 @@ private fun OnboardingWizard(
     }
 }
 
-/* =================================================================================
- * Plan + Log screen
- * ================================================================================= */
+/* =============================================================================
+ * Plan + log – redesigned visual with clean cards and gradient background
+ * ============================================================================= */
 @Composable
 private fun PlanAndLogScreen(
     plan: ExercisePlan,
@@ -481,45 +494,58 @@ private fun PlanAndLogScreen(
     onAdjustPlan: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val bg = Brush.verticalGradient(listOf(Color(0xFFF7FAFC), Color(0xFFE8F5E9)))
+
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .background(bg)
+            .padding(horizontal = 0.dp), // outer column already has 16.dp
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 调整计划按钮（显眼且固定在列表上方）
+        // Weekly plan card with "Adjust plan" entry
         item {
-            OutlinedButton(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .padding(bottom = 6.dp),
-                onClick = onAdjustPlan
-            ) { Text("Adjust plan") }
-        }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = 8.dp,
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Your weekly plan", style = MaterialTheme.typography.h6, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onAdjustPlan) { Text("Adjust plan") }
+                    }
 
-        item {
-            CardBlock(title = "Your weekly plan", padding = 16.dp) {
-                Text("Goal: ${profile.goal.name}")
-                Spacer(Modifier.height(6.dp))
-                Text("Schedule: ${profile.daysPerWeek} days/week · ${profile.minutesPerSession} min/session")
-                Spacer(Modifier.height(6.dp))
-                Text("Suggested HR: ${plan.suggestedHRZone}")
-                Spacer(Modifier.height(6.dp))
-                Text("Estimated weekly calorie burn: ${plan.weeklyKcalTarget} kcal")
-                Spacer(Modifier.height(10.dp))
-                Text("Split:", fontWeight = FontWeight.SemiBold)
-                plan.split.forEach { Text("• $it") }
-                if (plan.notes.isNotBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Notes:", fontWeight = FontWeight.SemiBold)
-                    Text(plan.notes)
+                    Spacer(Modifier.height(6.dp))
+                    InfoRow("🎯", "Goal", profile.goal.name)
+                    InfoRow("🗓️", "Schedule", "${profile.daysPerWeek} days/week · ${profile.minutesPerSession} min/session")
+                    InfoRow("❤️", "Suggested HR", plan.suggestedHRZone)
+                    InfoRow("🔥", "Weekly calories", "${plan.weeklyKcalTarget} kcal")
+
+                    Spacer(Modifier.height(10.dp))
+                    Text("Split", fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    plan.split.forEach { Text("• $it") }
+
+                    if (plan.notes.isNotBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("Notes", fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(2.dp))
+                        Text(plan.notes)
+                    }
                 }
             }
         }
 
+        // Tutorials
         item {
-            CardBlock(title = "Tutorials") {
+            CardBlock(title = "Tutorials", padding = 16.dp) {
                 TutorialItem("HIIT basics (12 min)", "40s fast / 20s easy × 12. Warm up & cool down included.")
                 Divider(Modifier.padding(vertical = 8.dp))
                 TutorialItem("Full-body form cues", "Squat/hinge/push/pull/core. Keep neutral spine. Breathe.")
@@ -528,36 +554,41 @@ private fun PlanAndLogScreen(
             }
         }
 
+        // Optional: enable background read
         if (!backgroundReadGranted) {
             item {
                 Button(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
-                        .padding(vertical = 4.dp),
+                        .padding(top = 8.dp),
                     onClick = onRequestBgRead,
-                    enabled = backgroundReadAvailable,
-                ) { Text(if (backgroundReadAvailable) "Request Background Read" else "Background Read Not Available") }
+                    enabled = backgroundReadAvailable
+                ) { Text(if (backgroundReadAvailable) "Enable background read" else "Background read not available") }
             }
         }
 
+        // Add sample session (kept for demo/testing)
         item {
             Button(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .padding(vertical = 4.dp),
-                onClick = onInsertClick
-            ) { Text("Add a sample session") }
+                    .height(50.dp)
+                    .padding(top = 12.dp),
+                onClick = onInsertClick,
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("＋ Add a sample session", fontWeight = FontWeight.Bold) }
         }
 
+        // Today’s sessions
         item {
             Text(
                 "Today’s sessions",
                 style = MaterialTheme.typography.h6,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 6.dp)
+                    .padding(top = 16.dp, bottom = 6.dp)
             )
         }
 
@@ -574,45 +605,67 @@ private fun PlanAndLogScreen(
         } else {
             items(sessionsList) { s ->
                 val appInfo = s.sourceAppInfo
-                ExerciseSessionRow(
-                    start = s.startTime,
-                    end = s.endTime,
-                    uid = s.id,
-                    name = s.title ?: "No title",
-                    sourceAppName = appInfo?.appLabel ?: "Unknown app",
-                    sourceAppIcon = appInfo?.icon,
-                    onDeleteClick = { uid -> onDeleteClick(uid) },
-                    onDetailsClick = { uid -> onDetailsClick(uid) }
-                )
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    elevation = 4.dp,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        ExerciseSessionRow(
+                            start = s.startTime,
+                            end = s.endTime,
+                            uid = s.id,
+                            name = s.title ?: "No title",
+                            sourceAppName = appInfo?.appLabel ?: "Unknown app",
+                            sourceAppIcon = appInfo?.icon,
+                            onDeleteClick = { uid -> onDeleteClick(uid) },
+                            onDetailsClick = { uid -> onDetailsClick(uid) }
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/* =================================================================================
- * UI bits
- * ================================================================================= */
-@Composable private fun CardBlock(
+@Composable
+private fun InfoRow(emoji: String, label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(emoji, modifier = Modifier.width(24.dp))
+        Spacer(Modifier.width(4.dp))
+        Text("$label: ", fontWeight = FontWeight.SemiBold)
+        Text(value)
+    }
+}
+
+/* =============================================================================
+ * Small UI helpers
+ * ============================================================================= */
+@Composable
+private fun CardBlock(
     title: String,
     padding: Dp = 12.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
         modifier = Modifier
-            .padding(vertical = 8.dp)
+            .padding(vertical = 10.dp)
             .fillMaxWidth(),
-        elevation = 4.dp,
-        shape = MaterialTheme.shapes.medium
+        elevation = 8.dp,
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(Modifier.padding(padding)) {
-            Text(title, style = MaterialTheme.typography.h6)
+            Text(title, style = MaterialTheme.typography.h6, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             content()
         }
     }
 }
 
-@Composable private fun GoalChip(text: String, selected: Boolean, onClick: () -> Unit) {
+@Composable
+private fun GoalChip(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         color = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.12f) else MaterialTheme.colors.surface,
         shape = MaterialTheme.shapes.small,
@@ -634,15 +687,19 @@ private fun PlanAndLogScreen(
     GoalChip(text, selected, onClick)
 }
 
-@Composable private fun TutorialItem(title: String, body: String) {
+@Composable
+private fun TutorialItem(title: String, body: String) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { expanded = !expanded }
     ) {
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -657,15 +714,15 @@ private fun PlanAndLogScreen(
                 text = body,
                 style = MaterialTheme.typography.body2,
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.8f),
-                modifier = Modifier.padding(top = 6.dp)
+                modifier = Modifier.padding(top = 6.dp, end = 8.dp)
             )
         }
     }
 }
 
-/* =================================================================================
- * Simple plan generator
- * ================================================================================= */
+/* =============================================================================
+ * Very small “plan generator” – tweak the logic anytime
+ * ============================================================================= */
 private data class ExercisePlan(
     val weeklyKcalTarget: Int,
     val suggestedHRZone: String,

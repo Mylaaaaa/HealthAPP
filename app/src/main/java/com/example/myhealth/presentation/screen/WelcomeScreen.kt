@@ -1,3 +1,4 @@
+// file: app/src/main/java/com/example/myhealth/presentation/screen/WelcomeScreen.kt
 package com.example.myhealth.presentation.screen
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -50,7 +51,6 @@ import com.example.myhealth.presentation.theme.HealthConnectTheme
 import com.example.myhealth.presentation.home.HomeUiState
 import kotlin.math.max
 import kotlin.math.min
-
 
 /**
  * Home screen rendering from HomeUiState. No DB required at this stage.
@@ -318,7 +318,8 @@ fun WelcomeScreen(
             NavEntry(Screen.Reports,           "Reports",           Icons.Filled.Assessment),
             NavEntry(Screen.InputReadings,     "Record weight",     Icons.Filled.Accessibility),
             NavEntry(Screen.SettingsScreen,    "Settings",          Icons.Filled.Settings)
-        ).filter { it.screen.hasMenuItem }
+        )
+        // ^^^ Removed the .filter { it.screen.hasMenuItem } so Record weight is never dropped.
 
         // Compute a fixed height so grid follows the parent scroll
         val itemHeightDp = 118

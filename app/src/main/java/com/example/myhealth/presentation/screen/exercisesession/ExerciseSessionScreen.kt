@@ -54,7 +54,6 @@ fun ExerciseSessionScreen(
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(ExerciseTab.Workout) }
 
-    // No topBar here — rely on the parent screen's AppBar
     Scaffold { padding ->
         Column(Modifier.padding(padding)) {
 
@@ -72,7 +71,14 @@ fun ExerciseSessionScreen(
 
             // Pages
             when (selectedTab) {
-                ExerciseTab.Plan -> ExercisePlanScreen(Modifier.padding(16.dp))
+                ExerciseTab.Plan -> ExercisePlanScreen(
+                    modifier = Modifier.padding(16.dp),
+                    onStartDay = {
+                        // For now: simply switch to Workout tab.
+                        // Later you can put the guided execution into a shared ViewModel here.
+                        selectedTab = ExerciseTab.Workout
+                    }
+                )
                 ExerciseTab.Workout -> WorkoutPage(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                     sessionsList = sessionsList,
@@ -189,7 +195,7 @@ private fun WorkoutPage(
             } else {
                 items(sessionsList, key = { it.id }) { s ->
                     val appInfo = s.sourceAppInfo
-                    ExerciseSessionRow(
+                    com.example.myhealth.presentation.component.ExerciseSessionRow(
                         start = s.startTime,
                         end = s.endTime,
                         uid = s.id,

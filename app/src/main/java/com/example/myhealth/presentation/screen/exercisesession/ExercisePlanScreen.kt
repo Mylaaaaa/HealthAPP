@@ -1,6 +1,7 @@
 package com.example.myhealth.presentation.screen.exercisesession
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
+import androidx.compose.material.ModalBottomSheetValue.Hidden
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
@@ -22,17 +24,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 
 /* ---------------------------------------------------------------------------
    Planner screen
    - First time: multi-step wizard (rich questionnaire)
-   - After saved: modern overview (chips + cards) with actions
-   - Comments are in English for submission
+   - After saved: overview (chips + weekly plan cards)
+   - Tap a day card -> show Day Plan detail (BottomSheet) with actions.
+   - All comments are in English for submission.
    --------------------------------------------------------------------------- */
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
-fun ExercisePlanScreen(modifier: Modifier = Modifier) {
+fun ExercisePlanScreen(
+    modifier: Modifier = Modifier,
+    // New: callback fired when user taps "Start guided" on a day plan.
+    // Parent can switch to Workout tab or start an execution flow.
+    onStartDay: (PlanDay) -> Unit = {}
+) {
     val context = LocalContext.current
     val prefs = remember(context) { ExercisePrefs(context) }
 
@@ -41,21 +51,51 @@ fun ExercisePlanScreen(modifier: Modifier = Modifier) {
     var profile by rememberSaveable(stateSaver = ProfileSaver) { mutableStateOf(persisted ?: UserProfile()) }
     var isSaved by rememberSaveable { mutableStateOf(persisted != null) }
 
-    if (isSaved) {
-        PlanOverview(
-            profile = profile,
-            onReCustomise = { isSaved = false }, // back to wizard with current answers
-            onReset = {                      // clear storage and go to wizard
-                prefs.clear()
-                profile = UserProfile()
-                isSaved = false
-            }
-        )
-    } else {
-        PlannerWizard(
-            initial = profile,
-            onSave = { p -> prefs.saveProfile(p); profile = p; isSaved = true }
-        )
+    // BottomSheet state for Day Plan detail
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(initialValue = Hidden, skipHalfExpanded = true)
+    var sheetDay by remember { mutableStateOf<PlanDay?>(null) }
+
+    ModalBottomSheetLayout(
+        sheetState = sheetState,
+        sheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        sheetContent = {
+            DayPlanSheet(
+                day = sheetDay,
+                onStart = { day ->
+                    // Let parent handle navigation / execution start.
+                    onStartDay(day)
+                    scope.launch { sheetState.hide() }
+                },
+                onQuickDone = { day ->
+                    // Placeholder: you can replace with real save-to-session logic.
+                    Toast.makeText(context, "Marked done: ${day.title}", Toast.LENGTH_SHORT).show()
+                    scope.launch { sheetState.hide() }
+                }
+            )
+        }
+    ) {
+        if (isSaved) {
+            PlanOverview(
+                profile = profile,
+                onReCustomise = { isSaved = false }, // back to wizard with current answers
+                onReset = {                      // clear storage and go to wizard
+                    prefs.clear()
+                    profile = UserProfile()
+                    isSaved = false
+                },
+                // When a day card is clicked, open the bottom sheet
+                onDayClick = { day ->
+                    sheetDay = day
+                    scope.launch { sheetState.show() }
+                }
+            )
+        } else {
+            PlannerWizard(
+                initial = profile,
+                onSave = { p -> prefs.saveProfile(p); profile = p; isSaved = true }
+            )
+        }
     }
 }
 
@@ -72,7 +112,7 @@ data class UserProfile(
     val goal: Goal = Goal.LoseWeight,
     val experience: Experience = Experience.Beginner,
     val equipment: Equipment = Equipment.None,
-    val daysPerWeek: Int = 3, // now supports 1..7
+    val daysPerWeek: Int = 3, // 1..7 supported
     val sessionLength: SessionLength = SessionLength.Standard30,
     val preferIndoor: Boolean = true,
     val hasInjury: Boolean = false,
@@ -220,11 +260,13 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
 }
 @Composable private fun SessionLengthStep(selected: SessionLength, onSelect: (SessionLength) -> Unit) {
     StepCard("Typical session length") {
-        ChoiceChip("~15 min", selected == SessionLength.Short15) { onSelect(SessionLength.Short15) }
-        Spacer(Modifier.width(8.dp))
-        ChoiceChip("~30 min", selected == SessionLength.Standard30) { onSelect(SessionLength.Standard30) }
-        Spacer(Modifier.width(8.dp))
-        ChoiceChip("~45+ min", selected == SessionLength.Long45) { onSelect(SessionLength.Long45) }
+        Row {
+            ChoiceChip("~15 min", selected == SessionLength.Short15) { onSelect(SessionLength.Short15) }
+            Spacer(Modifier.width(8.dp))
+            ChoiceChip("~30 min", selected == SessionLength.Standard30) { onSelect(SessionLength.Standard30) }
+            Spacer(Modifier.width(8.dp))
+            ChoiceChip("~45+ min", selected == SessionLength.Long45) { onSelect(SessionLength.Long45) }
+        }
     }
 }
 @Composable private fun PreferredTypesStep(selected: Set<WorkoutType>, onChange: (Set<WorkoutType>) -> Unit) {
@@ -324,16 +366,17 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
 private fun PlanOverview(
     profile: UserProfile,
     onReCustomise: () -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    onDayClick: (PlanDay) -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
 
-        // Header with one clear "Re-customize" and one "Reset plan"
+        // Header with "Re-customize"
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Your plan", style = MaterialTheme.typography.h6)
-            // --- confirmation dialog state ---
-            var showConfirmDialog by remember { mutableStateOf(false) }
 
+            // Confirmation dialog
+            var showConfirmDialog by remember { mutableStateOf(false) }
             Row {
                 TextButton(onClick = { showConfirmDialog = true }) {
                     Icon(Icons.Default.Tune, contentDescription = null)
@@ -341,34 +384,24 @@ private fun PlanOverview(
                     Text("Re-customize")
                 }
             }
-
-// --- confirmation dialog ---
             if (showConfirmDialog) {
                 AlertDialog(
                     onDismissRequest = { showConfirmDialog = false },
                     title = { Text("Re-customize Plan") },
                     text = {
-                        Text(
-                            "Do you want to re-customize your plan? Your current settings will be replaced once you save the new one."
-                        )
+                        Text("Do you want to re-customize your plan? Your current settings will be replaced once you save the new one.")
                     },
                     confirmButton = {
                         TextButton(onClick = {
                             showConfirmDialog = false
                             onReCustomise()
-                        }) {
-                            Text("Yes, re-customize")
-                        }
+                        }) { Text("Yes, re-customize") }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showConfirmDialog = false }) {
-                            Text("Cancel")
-                        }
+                        TextButton(onClick = { showConfirmDialog = false }) { Text("Cancel") }
                     }
                 )
             }
-
-
         }
 
         Spacer(Modifier.height(12.dp))
@@ -409,7 +442,10 @@ private fun PlanOverview(
         Spacer(Modifier.height(16.dp))
         SectionTitle(icon = Icons.Default.Today, title = "Weekly plan")
         Spacer(Modifier.height(8.dp))
-        WeeklyPlanPretty(generateWeeklyPlan(profile, computeSchedule(profile)))
+
+        // Generate and render weekly plan (cards are clickable)
+        val plan = remember(profile) { generateWeeklyPlan(profile, computeSchedule(profile)) }
+        WeeklyPlanPretty(plan, onDayClick)
 
         Spacer(Modifier.height(16.dp))
         SectionTitle(icon = Icons.Default.CheckCircle, title = "Daily suggestions")
@@ -468,10 +504,17 @@ private fun PlanOverview(
         elevation = 0.dp
     ) { Text(text, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.caption) }
 }
-@Composable private fun WeeklyPlanPretty(plan: ExercisePlan) {
+@Composable private fun WeeklyPlanPretty(
+    plan: ExercisePlan,
+    onDayClick: (PlanDay) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         plan.days.forEach { day ->
-            Card(elevation = 2.dp, shape = RoundedCornerShape(14.dp)) {
+            Card(
+                elevation = 2.dp,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.clickable { onDayClick(day) }
+            ) {
                 Row(Modifier.fillMaxWidth().padding(14.dp)) {
                     DayBadge(day.title.take(3))
                     Spacer(Modifier.width(12.dp))
@@ -514,7 +557,7 @@ private fun PlanOverview(
 data class PlanDay(val title: String, val items: List<String>)
 data class ExercisePlan(val days: List<PlanDay>)
 
-/** Compute which days of week to schedule for, honoring selected availability and daysPerWeek (1..7). */
+/** Compute which days of week to schedule for, honoring availability and daysPerWeek (1..7). */
 private fun computeSchedule(p: UserProfile): List<DayOfWeek> {
     val all = listOf(
         DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
@@ -522,12 +565,11 @@ private fun computeSchedule(p: UserProfile): List<DayOfWeek> {
     )
     val target = p.daysPerWeek.coerceIn(1, 7)
 
-    // If user selected availability, start from those; otherwise use a sensible default spread.
     val base = if (p.availableDays.isNotEmpty()) {
         p.availableDays.toList().sortedBy { it.value }
     } else {
         when (target) {
-            1 -> listOf(DayOfWeek.WEDNESDAY) // center of week
+            1 -> listOf(DayOfWeek.WEDNESDAY)
             2 -> listOf(DayOfWeek.TUESDAY, DayOfWeek.FRIDAY)
             3 -> listOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY)
             4 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.SATURDAY)
@@ -536,8 +578,6 @@ private fun computeSchedule(p: UserProfile): List<DayOfWeek> {
             else -> all // 7
         }
     }
-
-    // If base is shorter than requested, append more weekdays in order to reach target.
     val result = mutableListOf<DayOfWeek>()
     result += base
     if (result.size < target) {
@@ -676,4 +716,38 @@ private fun titleForGoal(goal: Goal) = when (goal) {
     Goal.GainMuscle -> "Muscle program"
     Goal.Maintain -> "Balanced program"
     Goal.ImproveEndurance -> "Endurance program"
+}
+
+/* --------------------------- BottomSheet content ------------------------- */
+
+@Composable
+private fun DayPlanSheet(
+    day: PlanDay?,
+    onStart: (PlanDay) -> Unit,
+    onQuickDone: (PlanDay) -> Unit
+) {
+    if (day == null) {
+        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+            Text("No day selected")
+        }
+        return
+    }
+    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Today, contentDescription = null, tint = MaterialTheme.colors.primary)
+            Spacer(Modifier.width(8.dp))
+            Text(day.title, style = MaterialTheme.typography.h6)
+        }
+        Spacer(Modifier.height(8.dp))
+        Card(elevation = 1.dp, shape = RoundedCornerShape(14.dp)) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                day.items.forEach { Text("• $it", style = MaterialTheme.typography.body2) }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(modifier = Modifier.weight(1f), onClick = { onStart(day) }) { Text("Start guided") }
+            OutlinedButton(modifier = Modifier.weight(1f), onClick = { onQuickDone(day) }) { Text("Mark done quickly") }
+        }
+    }
 }

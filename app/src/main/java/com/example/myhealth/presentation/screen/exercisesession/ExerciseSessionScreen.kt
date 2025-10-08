@@ -180,20 +180,8 @@ fun ExerciseSessionScreen(
     }
 }
 
-// -------------------- ENUM & SUB COMPONENTS --------------------
-
-private enum class ExerciseTab(
-    val title: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
-) {
-    Plan("Plan", Icons.Default.Rule),
-    Workout("Workout", Icons.Default.FitnessCenter),
-    Courses("Courses", Icons.Default.ListAlt),
-    Stats("Stats", Icons.Default.BarChart)
-}
-
 @Composable
-private fun WorkoutPage(
+fun WorkoutPage(
     modifier: Modifier = Modifier,
     sessionsList: List<ExerciseSession>,
     backgroundReadAvailable: Boolean,
@@ -203,38 +191,80 @@ private fun WorkoutPage(
     onDetailsClick: (String) -> Unit,
     onDeleteClick: (String) -> Unit
 ) {
+    WorkoutDashboardM2(
+        modifier = modifier,
+        sessionsList = sessionsList,
+        backgroundReadAvailable = backgroundReadAvailable,
+        backgroundReadGranted = backgroundReadGranted,
+        onRequestBgRead = onRequestBgRead,
+        onInsertClick = onInsertClick,
+        onDetailsClick = onDetailsClick,
+        onDeleteClick = onDeleteClick
+    )
+}
+
+@Composable
+fun WorkoutDashboardM2(
+    modifier: Modifier = Modifier,
+    sessionsList: List<ExerciseSession>,
+    backgroundReadAvailable: Boolean,
+    backgroundReadGranted: Boolean,
+    onRequestBgRead: () -> Unit,
+    onInsertClick: () -> Unit,
+    onDetailsClick: (String) -> Unit,
+    onDeleteClick: (String) -> Unit
+) {
+    // daily goal: how many sessions you aim to log today (edit as you like)
+    var dailyGoal by rememberSaveable { mutableStateOf(3) }
+    val done = sessionsList.size
+    val progress = (done / dailyGoal.toFloat()).coerceIn(0f, 1f)
+
     Column(modifier.fillMaxSize()) {
 
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(onClick = onInsertClick) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Add a sample session")
-            }
-        }
+        // --- HERO: compact dashboard ring + metrics ---
+        HeroSectionM2(
+            done = done,
+            goal = dailyGoal,
+            progress = progress,
+            streakDays = 4 // TODO hook up to your real streak if you have one
+        )
 
+        // --- Permission banner for background read (re-use your existing composable) ---
         BackgroundReadRequest(
             backgroundReadAvailable = backgroundReadAvailable,
             backgroundReadGranted = backgroundReadGranted,
             onRequestBgRead = onRequestBgRead
         )
 
-        Text("Today's sessions", Modifier.fillMaxWidth().padding(vertical = 6.dp))
+        // --- Quick actions row (templates / add) ---
+        QuickActionsRowM2(
+            onQuickAdd = { onInsertClick() }
+        )
 
-        LazyColumn(
+        // --- Simple recommendation card ---
+        RecommendationCardM2(
+            onAdd = { onInsertClick() }
+        )
+
+        // --- Title ---
+        Text(
+            "Today's sessions",
             modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 4.dp),
-            contentPadding = PaddingValues(bottom = 24.dp)
-        ) {
-            if (sessionsList.isEmpty()) {
-                item { EmptyState() }
-            } else {
+                .fillMaxWidth()
+                .padding(top = 10.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.subtitle1
+        )
+
+        // --- List or empty state ---
+        if (sessionsList.isEmpty()) {
+            EmptyState()
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 4.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
                 items(sessionsList, key = { it.id }) { s ->
                     val appInfo = s.sourceAppInfo
                     ExerciseSessionRow(
@@ -254,6 +284,138 @@ private fun WorkoutPage(
             }
         }
     }
+}
+
+// ===== Sub-components (Material 2) =====
+
+@Composable
+private fun HeroSectionM2(
+    done: Int,
+    goal: Int,
+    progress: Float,
+    streakDays: Int
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 10.dp),
+        elevation = 2.dp
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Circular progress with number
+            Box(Modifier.size(110.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = 1f,
+                    strokeWidth = 10.dp,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.08f)
+                )
+                CircularProgressIndicator(
+                    progress = progress,
+                    strokeWidth = 10.dp
+                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$done/$goal", style = MaterialTheme.typography.h6)
+                    Text("sessions", style = MaterialTheme.typography.caption)
+                }
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            Column(Modifier.weight(1f)) {
+                MetricRowM2(label = "Streak", value = "$streakDays days")
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(0.95f)
+                )
+                Text(
+                    text = "${(progress * 100).toInt()}% of daily goal",
+                    style = MaterialTheme.typography.caption,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricRowM2(label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            modifier = Modifier.width(72.dp),
+            style = MaterialTheme.typography.caption
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.subtitle1
+        )
+    }
+}
+
+@Composable
+private fun QuickActionsRowM2(onQuickAdd: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OutlinedButton(onClick = onQuickAdd) { Text("Add walk 30m") }
+        OutlinedButton(onClick = onQuickAdd) { Text("Add run 25m") }
+        OutlinedButton(onClick = onQuickAdd) { Text("Add strength 35m") }
+    }
+}
+
+@Composable
+private fun RecommendationCardM2(onAdd: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp),
+        elevation = 0.dp,
+        backgroundColor = MaterialTheme.colors.primary.copy(alpha = 0.08f)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Based on last week", style = MaterialTheme.typography.caption)
+                Text(
+                    "Recommended: Easy Walk · 30 minutes",
+                    style = MaterialTheme.typography.subtitle1
+                )
+                Text(
+                    "Gentle cardio to maintain your streak.",
+                    style = MaterialTheme.typography.body2
+                )
+            }
+            Button(onClick = onAdd) { Text("Add") }
+        }
+    }
+}
+
+
+// -------------------- ENUM & SUB COMPONENTS --------------------
+
+private enum class ExerciseTab(
+    val title: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    Plan("Plan", Icons.Default.Rule),
+    Workout("Workout", Icons.Default.FitnessCenter),
+    Courses("Courses", Icons.Default.ListAlt),
+    Stats("Stats", Icons.Default.BarChart)
 }
 
 @Composable

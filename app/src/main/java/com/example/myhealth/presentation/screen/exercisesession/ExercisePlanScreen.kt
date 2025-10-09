@@ -127,12 +127,23 @@ fun ExercisePlanScreen(
             )
         }
     ) {
+        // NEW — only mark the *today* card as Done based on today's tasks;
+// other days are not affected by today's completion.
         if (isSaved) {
-            val allTasksToday = remember(planTasksVersion) { tasksStore.getTasks(today) }
+            // 3-letter uppercase prefix of *today* (e.g., "FRI"). We use it to identify the card of today.
+            val today3 = remember { today.dayOfWeek.name.take(3).uppercase() }
+
+            // Re-read today's tasks whenever PlanTasksStore version changes
+            // so UI reflects toggles coming from the Workout page as well.
+            val allTasksToday = remember(planTasksVersion, today) { tasksStore.getTasks(today) }
+
+            // Only consider "all completed" for today's card; an empty list means not done.
+            val allCompletedToday = allTasksToday.isNotEmpty() && allTasksToday.all { it.completed }
+
             PlanOverview(
                 profile = profile,
                 onReCustomise = { isSaved = false }, // back to wizard with current answers
-                onReset = {                      // clear storage and go to wizard
+                onReset = {                           // clear storage and go to wizard
                     prefs.clear()
                     profile = UserProfile()
                     isSaved = false
@@ -142,11 +153,13 @@ fun ExercisePlanScreen(
                     sheetDay = day
                     scope.launch { sheetState.show() }
                 },
-                // Used to render the "Done" chip on weekly cards.
-                // NEW: also consider all tasks in PlanTasksStore are completed for TODAY.
+                // Only the card that represents *today* can be marked Done by today's task completion.
+                // We also keep your legacy progressStore flag (Quick done etc.) as a fallback for today.
                 isDoneToday = { day ->
-                    val allCompleted = allTasksToday.isNotEmpty() && allTasksToday.all { it.completed }
-                    allCompleted || progressStore.isDone(today, day.title)
+                    val isTodayCard = day.title.startsWith(today3)
+                    if (!isTodayCard) return@PlanOverview false
+                    val planned = allTasksToday.filter { it.type != "synthetic" }
+                    planned.isNotEmpty() && planned.all { it.completed }
                 }
             )
         } else {
@@ -155,8 +168,9 @@ fun ExercisePlanScreen(
                 onSave = { p -> prefs.saveProfile(p); profile = p; isSaved = true }
             )
         }
+
     }
-}
+    }
 
 /* ------------------------------ DATA MODEL ------------------------------- */
 
@@ -388,6 +402,7 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
             DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
             DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY
         )
+
         Column {
             all.chunked(4).forEach { row ->
                 Row {
@@ -889,14 +904,6 @@ private fun DayPlanSheet(
             Text(day.title, style = MaterialTheme.typography.h6)
         }
 
-        if (isDoneToday) {
-            Text(
-                "Completed today — tap Redo to start a new run.",
-                style = MaterialTheme.typography.body2,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
-            )
-        }
-
         // ---------- Per-item operations (planned / non-synthetic) ----------
         ensureTodayTemplate()
         tasks.filter { it.type != "synthetic" }.forEach { t ->
@@ -918,19 +925,55 @@ private fun DayPlanSheet(
             }
         }
 
-        // Actions row: Guided & Quick done (keep your originals)
+        // ---- Live completion summary based on today's PlanTasksStore ----
+// We compute "day is done" only from PLANNED (non-synthetic) items,
+// so the result matches the green "Done" chip logic in Plan page.
+        val planned = tasks.filter { it.type != "synthetic" }
+        val plannedTotal = planned.size
+        val plannedDone = planned.count { it.completed }
+        val allCompletedNow = plannedTotal > 0 && plannedDone == plannedTotal
+
+// For quick-complete button copy, we still show progress over ALL items
+// (planned + synthetic) to be more informative.
+        val total = tasks.size
+        val doneCount = tasks.count { it.completed }
+        val anyDone = doneCount > 0
+        val remaining = (total - doneCount).coerceAtLeast(0)
+
+        if (allCompletedNow) {
+            Text(
+                "Completed today — tap Redo to start a new run.",
+                style = MaterialTheme.typography.body2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
+            )
+        }
+
+        // ---- Actions row: left = Start/Redo, right = quick complete with live label ----
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+            // Left button: if today is considered done, show "Redo guided".
             Button(
                 modifier = Modifier.weight(1f),
                 onClick = {
                     ensureTodayTemplate()
-                    setAllCompleted(false) // guided run starts fresh
+                    // Start a fresh guided run → clear today's checkmarks first
+                    setAllCompleted(false)
                     onStart(day)
                 }
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text(if (isDoneToday) "Redo guided" else "Start guided")
+                Text(if (allCompletedNow) "Redo guided" else "Start guided")
+            }
+
+            // Right button (quick complete) – dynamic label & enabled state:
+            // - all done            → disabled, "Already done today"
+            // - some done           → enabled,  "Mark all done (N left)"
+            // - none/empty          → enabled,  "Mark done quickly"
+            val quickText = when {
+                allCompletedNow -> "Already done today"
+                anyDone         -> "Mark all done ($remaining left)"
+                else            -> "Mark done quickly"
             }
 
             OutlinedButton(
@@ -938,15 +981,16 @@ private fun DayPlanSheet(
                 onClick = {
                     ensureTodayTemplate()
                     setAllCompleted(true)
-                    onQuickDone(day)
+                    onQuickDone(day) // keep your legacy flow; also sets your previous "done" flag
                 },
-                enabled = !isDoneToday
+                enabled = !allCompletedNow
             ) {
                 Icon(Icons.Default.Check, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text(if (isDoneToday) "Already done today" else "Mark done quickly")
+                Text(quickText)
             }
         }
+
 
         // ---------- Synthetic (recommended) with delete ----------
         val synthetic = tasks.filter { it.type == "synthetic" }

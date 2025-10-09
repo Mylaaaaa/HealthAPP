@@ -8,13 +8,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.*
-import androidx.compose.material.Checkbox
-import androidx.compose.material.Card
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,21 +20,21 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.example.myhealth.data.ExerciseSession
 import com.example.myhealth.presentation.screen.exercisesession.planaccess.CompletedSessionsStore
 import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-
-// Use the same session type as in ExerciseSessionScreen
-import com.example.myhealth.data.ExerciseSession
 
 /**
  * Workout dashboard (Material 2).
  *
  * Additions (non-destructive):
  * - "Recommend exercise" row with 3 cards; tapping one appends a synthetic task to Today's plan.
- * - Today's plan rows are checkable; clicking a row opens a details dialog with "Mark as completed".
- * - Any completion change writes to PlanTasksStore and immediately refreshes the hero progress.
+ * - Today's plan rows use an action button instead of checkbox:
+ *      • Tap → confirm mark completed (or confirm cancel if already completed).
+ * - Synthetic tasks (recommended/quick-add) are deletable; built-in plan tasks are not.
+ * - All writes go through PlanTasksStore -> both Plan & Workout screens auto-refresh.
  */
 @Composable
 fun WorkoutDashboardM2(
@@ -55,18 +53,23 @@ fun WorkoutDashboardM2(
     val tasksStore = remember { PlanTasksStore(app) }
     val completedStore = remember { CompletedSessionsStore(app) } // kept for possible use
 
+    // Local state mirrors today's tasks; we always refresh from the store after any write.
     var plannedTasks by remember { mutableStateOf(tasksStore.getTasks(today)) }
+
+    // Hero progress is computed on the fly from plannedTasks
     val plannedCount = plannedTasks.size
     val completedCount = plannedTasks.count { it.completed }
     val progress = if (plannedCount == 0) 0f else completedCount.toFloat() / plannedCount
 
-    // Don't assume fields on ExerciseSession; show raw list
+    // We don't assume fields of ExerciseSession; just render raw list if provided
     val todaySessions = sessionsList
 
-    // Dialog state
-    var detailTask by remember { mutableStateOf<PlanTasksStore.PlanTask?>(null) }
+    // Confirmation dialog states
+    var toToggle by remember { mutableStateOf<PlanTasksStore.PlanTask?>(null) }
+    var toggleToCompleted by remember { mutableStateOf(true) }
+    var toDelete by remember { mutableStateOf<PlanTasksStore.PlanTask?>(null) }
 
-    // Listen to prefs → auto refresh progress when setTasks() is called anywhere
+    // Listen to prefs → auto refresh when any page calls setTasks()
     DisposableEffect(today) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             plannedTasks = tasksStore.getTasks(today)
@@ -103,11 +106,12 @@ fun WorkoutDashboardM2(
         )
         RecommendRow(
             onPick = { title, minutes ->
+                // Append a synthetic (deletable) task
                 val list = tasksStore.getTasks(today)
                 val newTask = PlanTasksStore.PlanTask(
                     taskId = "synth-${System.currentTimeMillis()}",
                     title = title,
-                    type = "synthetic", // so our partition(filter) logic keeps working
+                    type = "synthetic",     // mark as synthetic so we can allow deletion
                     completed = false,
                     target = minutes
                 )
@@ -116,7 +120,7 @@ fun WorkoutDashboardM2(
                     dayTitle = tasksStore.getDayTitle(today),
                     tasks = list + newTask
                 )
-                plannedTasks = tasksStore.getTasks(today) // local instant refresh
+                plannedTasks = tasksStore.getTasks(today) // local refresh
             }
         )
 
@@ -136,36 +140,32 @@ fun WorkoutDashboardM2(
             }
 
             itemsIndexed(plannedTasks, key = { _, t -> t.taskId }) { _, p ->
-                PlannedTaskRowCheckable(
+                PlannedTaskRowActionable(
                     task = p,
-                    onToggle = { checked ->
-                        val listNow = tasksStore.getTasks(today)
-                        val newList = listNow.map { if (it.taskId == p.taskId) it.copy(completed = checked) else it }
-                        tasksStore.setTasks(
-                            date = today,
-                            dayTitle = tasksStore.getDayTitle(today),
-                            tasks = newList
-                        )
-                        plannedTasks = newList
+                    onToggleRequest = { wantCompleted ->
+                        // Ask for confirmation (button changed to confirm dialog)
+                        toToggle = p
+                        toggleToCompleted = wantCompleted
+                    },
+                    onDeleteRequest = {
+                        // Only allow delete for synthetic tasks (UI 已限制，这里双保险)
+                        if (p.type == "synthetic") {
+                            toDelete = p
+                        }
                     }
                 )
-                // Click anywhere below the checkbox row to open details
+                // Whole row click → open details
                 Spacer(
                     Modifier
                         .fillMaxWidth()
                         .height(0.dp)
-                        .clickable { detailTask = p }
+                        .clickable { /* you can open a details dialog here if needed */ }
                 )
                 Spacer(Modifier.height(8.dp))
             }
 
-            item { Divider(modifier = Modifier.alpha(0.08f)) }
-            item { Spacer(Modifier.height(8.dp)) }
-
             // ---------- Recent Sessions ----------
-            if (todaySessions.isEmpty()) {
-                item { EmptyStateCard() }
-            } else {
+            if (todaySessions.isNotEmpty()) {
                 item {
                     SectionHeaderM2(
                         icon = { Icon(Icons.Default.NotificationsActive, contentDescription = null) },
@@ -177,7 +177,7 @@ fun WorkoutDashboardM2(
                     SessionRow(
                         session = s,
                         onDetailsClick = { onDetailsClick(index.toString()) },
-                        onDeleteClick  = { onDeleteClick(index.toString()) }
+                        onDeleteClick = { onDeleteClick(index.toString()) }
                     )
                     Spacer(Modifier.height(8.dp))
                 }
@@ -187,27 +187,68 @@ fun WorkoutDashboardM2(
         }
     }
 
-    // ---------- Details dialog for a plan task ----------
-    detailTask?.let { t ->
-        PlanTaskDetailDialog(
-            task = t,
-            onDismiss = { detailTask = null },
-            onMarkCompleted = {
-                val listNow = tasksStore.getTasks(today)
-                val newList = listNow.map { if (it.taskId == t.taskId) it.copy(completed = true) else it }
-                tasksStore.setTasks(
-                    date = today,
-                    dayTitle = tasksStore.getDayTitle(today),
-                    tasks = newList
-                )
-                plannedTasks = newList
-                detailTask = null
-            }
+    /* ---------------- Confirmation dialogs ---------------- */
+
+    // Toggle (complete / un-complete)
+    toToggle?.let { t ->
+        val willComplete = toggleToCompleted
+        AlertDialog(
+            onDismissRequest = { toToggle = null },
+            title = { Text(if (willComplete) "Mark as completed?" else "Mark as not completed?") },
+            text = {
+                val msg = if (willComplete)
+                    "This will mark \"${t.title}\" as completed and update progress."
+                else
+                    "This will mark \"${t.title}\" as not completed and update progress."
+                Text(msg)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val listNow = tasksStore.getTasks(today)
+                    val newList = listNow.map { if (it.taskId == t.taskId) it.copy(completed = willComplete) else it }
+                    tasksStore.setTasks(
+                        date = today,
+                        dayTitle = tasksStore.getDayTitle(today),
+                        tasks = newList
+                    )
+                    plannedTasks = newList
+                    toToggle = null
+                }) { Text("Confirm") }
+            },
+            dismissButton = { TextButton(onClick = { toToggle = null }) { Text("Cancel") } }
+        )
+    }
+
+    // Delete synthetic
+    toDelete?.let { t ->
+        AlertDialog(
+            onDismissRequest = { toDelete = null },
+            title = { Text("Remove recommended task?") },
+            text = {
+                Text("This will remove \"${t.title}\" from today's plan. This action cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    // Only remove if synthetic
+                    val listNow = tasksStore.getTasks(today)
+                    val newList = listNow.filterNot { it.taskId == t.taskId && t.type == "synthetic" }
+                    tasksStore.setTasks(
+                        date = today,
+                        dayTitle = tasksStore.getDayTitle(today),
+                        tasks = newList
+                    )
+                    plannedTasks = newList
+                    toDelete = null
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Cancel") } }
         )
     }
 }
 
-/* ---------------- Helper UI blocks (kept minimal) ---------------- */
+/* --------------------------------------------------------------------------------- */
+/* Helper UI blocks — kept minimal; you can keep your originals if you prefer.      */
+/* --------------------------------------------------------------------------------- */
 
 @Composable
 private fun BackgroundReadRequest(
@@ -287,27 +328,6 @@ private fun SectionHeaderM2(
     }
 }
 
-@Composable
-private fun EmptyStateCard() {
-    Card(
-        modifier = Modifier
-            .padding(horizontal = 12.dp)
-            .fillMaxWidth(),
-        elevation = 0.dp,
-        backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.03f)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text("No sessions recorded today", style = MaterialTheme.typography.subtitle1)
-            Text(
-                "Start a guided plan or quick-add a record to see progress here.",
-                style = MaterialTheme.typography.caption,
-                color = Color.Gray
-            )
-        }
-    }
-}
-
-/** Three horizontal recommendation cards. */
 /** Three horizontal recommendation cards. */
 @Composable
 private fun RecommendRow(
@@ -319,7 +339,6 @@ private fun RecommendRow(
             .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // NOTE: put weight() here (inside Row scope), not inside SuggestionCard
         SuggestionCard(
             modifier = Modifier.weight(1f).height(72.dp),
             title = "Easy walk",
@@ -343,14 +362,13 @@ private fun RecommendRow(
 
 @Composable
 private fun SuggestionCard(
-    modifier: Modifier = Modifier,   // <-- add modifier param
+    modifier: Modifier = Modifier,
     title: String,
     minutes: Int,
     onPick: (title: String, minutes: Int) -> Unit
 ) {
     Card(
-        modifier = modifier            // <-- use the modifier passed from Row scope
-            .clickable { onPick(title, minutes) },
+        modifier = modifier.clickable { onPick(title, minutes) },
         elevation = 0.dp,
         backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.05f)
     ) {
@@ -396,15 +414,21 @@ fun SessionRow(
     }
 }
 
-/** Checkable row for plan tasks; additive (does not replace your original row). */
+/**
+ * Action row for plan tasks.
+ * - Button toggles completion with confirm dialog (instead of a checkbox).
+ * - Delete icon only shown for synthetic tasks.
+ */
 @Composable
-private fun PlannedTaskRowCheckable(
+private fun PlannedTaskRowActionable(
     task: PlanTasksStore.PlanTask,
-    onToggle: (Boolean) -> Unit
+    onToggleRequest: (wantCompleted: Boolean) -> Unit,
+    onDeleteRequest: () -> Unit
 ) {
     Card(
         elevation = 0.dp,
-        backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.03f)
+        backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.03f),
+        modifier = Modifier.padding(horizontal = 12.dp)
     ) {
         Row(
             modifier = Modifier
@@ -412,41 +436,28 @@ private fun PlannedTaskRowCheckable(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Checkbox(checked = task.completed, onCheckedChange = onToggle)
-            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(task.title, style = MaterialTheme.typography.subtitle2)
                 task.target?.let { mins ->
                     Text("$mins min", style = MaterialTheme.typography.caption, color = Color.Gray)
                 }
             }
+
+            // Primary action button replaces checkbox
+            if (!task.completed) {
+                OutlinedButton(onClick = { onToggleRequest(true) }) { Text("Mark done") }
+            } else {
+                OutlinedButton(onClick = { onToggleRequest(false) }) { Text("Unmark") }
+            }
+
+            Spacer(Modifier.width(6.dp))
+
+            // Delete only for synthetic (recommended/quick-add) tasks
+            if (task.type == "synthetic") {
+                IconButton(onClick = onDeleteRequest) {
+                    Icon(Icons.Default.Delete, contentDescription = "Remove")
+                }
+            }
         }
     }
-}
-
-/** Simple detail dialog for a plan task, includes "Mark as completed". */
-@Composable
-private fun PlanTaskDetailDialog(
-    task: PlanTasksStore.PlanTask,
-    onDismiss: () -> Unit,
-    onMarkCompleted: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(task.title) },
-        text = {
-            Column {
-                Text("Details of this exercise plan.", style = MaterialTheme.typography.body2)
-                task.target?.let { Text("Target: $it min", style = MaterialTheme.typography.caption) }
-                val statusText = if (task.completed) "Already completed" else "Not completed yet"
-                Text(statusText, style = MaterialTheme.typography.caption, color = Color.Gray)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onMarkCompleted) { Text("Mark as completed") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        }
-    )
 }

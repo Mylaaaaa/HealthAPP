@@ -57,6 +57,23 @@ fun ExercisePlanScreen(
     val progressStore = remember { PlanProgressStore(context.applicationContext) }
     val activeStore = remember { ActiveDayProgressStore(context.applicationContext) }
 
+    // NEW: today (used by listeners and "done" check)
+    val today = remember { LocalDate.now() }
+
+    // NEW: bump this version to trigger recomposition whenever PlanTasksStore changes.
+    // We don't need the task list itself here; the version is enough to re-read in lambdas.
+    var planTasksVersion by remember { mutableStateOf(0) }
+
+    // NEW: listen to PlanTasksStore changes so Plan screen reacts to toggles done in Workout page.
+    DisposableEffect(today) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            // Any setTasks() will trigger this; just bump a version to refresh dependent reads.
+            planTasksVersion++
+        }
+        tasksStore.addOnChangeListener(listener)
+        onDispose { tasksStore.removeOnChangeListener(listener) }
+    }
+
     // Load persisted profile or a default
     val persisted = prefs.loadProfileOrNull()
     var profile by rememberSaveable(stateSaver = ProfileSaver) { mutableStateOf(persisted ?: UserProfile()) }
@@ -70,7 +87,6 @@ fun ExercisePlanScreen(
     // Helpers to sync completion into PlanTasksStore for TODAY
     val markAllTodayCompleted: (Boolean) -> Unit = remember {
         { completed ->
-            val today = LocalDate.now()
             val current = tasksStore.getTasks(today)
             if (current.isNotEmpty()) {
                 val updated = current.map { it.copy(completed = completed) }
@@ -85,7 +101,7 @@ fun ExercisePlanScreen(
         sheetContent = {
             DayPlanSheet(
                 day = sheetDay,
-                // Still show your "done today" hint (kept for UI consistency)
+                // Keep your legacy "done" check to display hints
                 isDoneToday = sheetDay?.let { progressStore.isDone(LocalDate.now(), it.title) } ?: false,
                 onStart = { day ->
                     // If user chooses "Redo", clear today's completed flags and the legacy flags
@@ -112,6 +128,7 @@ fun ExercisePlanScreen(
         }
     ) {
         if (isSaved) {
+            val allTasksToday = remember(planTasksVersion) { tasksStore.getTasks(today) }
             PlanOverview(
                 profile = profile,
                 onReCustomise = { isSaved = false }, // back to wizard with current answers
@@ -125,8 +142,12 @@ fun ExercisePlanScreen(
                     sheetDay = day
                     scope.launch { sheetState.show() }
                 },
-                // Used only to render a "Done" chip on the weekly cards
-                isDoneToday = { day -> progressStore.isDone(LocalDate.now(), day.title) }
+                // Used to render the "Done" chip on weekly cards.
+                // NEW: also consider all tasks in PlanTasksStore are completed for TODAY.
+                isDoneToday = { day ->
+                    val allCompleted = allTasksToday.isNotEmpty() && allTasksToday.all { it.completed }
+                    allCompleted || progressStore.isDone(today, day.title)
+                }
             )
         } else {
             PlannerWizard(
@@ -262,7 +283,6 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
 
 /* ----------------------------- WIZARD STEPS ------------------------------ */
 // (unchanged UI helpers below…)
-
 @Composable private fun GoalStep(selected: Goal, onSelect: (Goal) -> Unit) {
     StepCard("Your primary goal") {
         ChoiceRadio("Lose weight", selected == Goal.LoseWeight) { onSelect(Goal.LoseWeight) }
@@ -784,7 +804,7 @@ private fun titleForGoal(goal: Goal) = when (goal) {
 
 /* --------------------------- BottomSheet content ------------------------- */
 
-// === Replace the whole DayPlanSheet with this version ===
+// === Replace the whole DayPlanSheet with this version (kept your structure) ===
 @Composable
 private fun DayPlanSheet(
     day: PlanDay?,
@@ -803,7 +823,7 @@ private fun DayPlanSheet(
         return
     }
 
-    /** 1) 确保今天的模板写入（并保留 synthetic），避免空表导致进度无法变化 */
+    /** Ensure today's template exists (and keep synthetic quick-add tasks). */
     fun ensureTodayTemplate() {
         val current = store.getTasks(today)
         if (current.isEmpty()) {
@@ -821,7 +841,7 @@ private fun DayPlanSheet(
         }
     }
 
-    /** 2) 把今天所有任务的 completed 统一设置并写回同一 key（Dashboard 正在监听这个 key） */
+    /** Mark all today's items as completed / not completed. */
     fun setAllCompleted(value: Boolean) {
         val list = store.getTasks(today)
         if (list.isNotEmpty()) {

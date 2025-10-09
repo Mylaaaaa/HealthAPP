@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -56,7 +57,9 @@ fun ExerciseSessionDetailScreen(
         val context = LocalContext.current
         val today = remember { LocalDate.now() }
         val completedStore = remember { CompletedSessionsStore(context.applicationContext) }
-        var isCompleted by remember {
+
+        // Persisted completion flag for this session id (scoped to "today" like before)
+        var isCompleted by rememberSaveable(sessionMetrics.uid) {
             mutableStateOf(completedStore.isCompleted(today, sessionMetrics.uid))
         }
 
@@ -75,7 +78,7 @@ fun ExerciseSessionDetailScreen(
                     }
                 }
             } else {
-                // Header
+                // ---------- Header ----------
                 item {
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -91,43 +94,44 @@ fun ExerciseSessionDetailScreen(
                     Spacer(Modifier.height(8.dp))
                 }
 
-                // Completed checkbox (affects Workout dashboard progress)
+                // ---------- Modern "Complete" button (replaces checkbox) ----------
                 item {
-                    Card(
-                        elevation = 0.dp,
-                        backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.03f),
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Button(
+                            onClick = {
+                                val newValue = !isCompleted
+                                isCompleted = newValue
+                                // Keep using your store so dashboard progress stays in sync
+                                completedStore.setCompleted(today, sessionMetrics.uid, newValue)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                backgroundColor = if (isCompleted)
+                                    Color(0xFF4CAF50) /* green */
+                                else
+                                    MaterialTheme.colors.primary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth(0.7f)
+                                .height(48.dp)
                         ) {
-                            Checkbox(
-                                checked = isCompleted,
-                                onCheckedChange = { checked ->
-                                    isCompleted = checked
-                                    completedStore.setCompleted(today, sessionMetrics.uid, checked)
-                                }
+                            Text(
+                                if (isCompleted) "Completed ✓" else "Mark as Completed",
+                                color = Color.White,
+                                style = MaterialTheme.typography.button
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Mark as completed", style = MaterialTheme.typography.subtitle2)
-                                Text(
-                                    "This toggles today's progress on the Workout dashboard.",
-                                    style = MaterialTheme.typography.caption,
-                                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
-                                )
-                            }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
                     Divider()
                     Spacer(Modifier.height(8.dp))
                 }
 
-                // Duration
+                // ---------- Duration ----------
                 item {
                     SessionBlock(label = stringResource(R.string.total_active_duration)) {
                         val active = sessionMetrics.totalActiveTime ?: Duration.ZERO
@@ -135,7 +139,7 @@ fun ExerciseSessionDetailScreen(
                     }
                 }
 
-                // Steps
+                // ---------- Steps ----------
                 item {
                     SessionBlock(label = stringResource(R.string.total_steps)) {
                         Row(
@@ -143,14 +147,16 @@ fun ExerciseSessionDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(sessionMetrics.totalSteps?.toString() ?: "0",
-                                style = MaterialTheme.typography.h6)
+                            Text(
+                                sessionMetrics.totalSteps?.toString() ?: "0",
+                                style = MaterialTheme.typography.h6
+                            )
                             RecordsIconButton(sessionMetrics.uid, SeriesRecordsType.STEPS, onDetailsClick)
                         }
                     }
                 }
 
-                // Distance
+                // ---------- Distance ----------
                 item {
                     SessionBlock(label = stringResource(R.string.total_distance)) {
                         Row(
@@ -158,14 +164,16 @@ fun ExerciseSessionDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(sessionMetrics.totalDistance?.toString() ?: "0.0",
-                                style = MaterialTheme.typography.h6)
+                            Text(
+                                sessionMetrics.totalDistance?.toString() ?: "0.0",
+                                style = MaterialTheme.typography.h6
+                            )
                             RecordsIconButton(sessionMetrics.uid, SeriesRecordsType.DISTANCE, onDetailsClick)
                         }
                     }
                 }
 
-                // Calories
+                // ---------- Calories ----------
                 item {
                     SessionBlock(label = stringResource(R.string.total_energy)) {
                         Row(
@@ -173,14 +181,16 @@ fun ExerciseSessionDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(sessionMetrics.totalEnergyBurned?.inCalories.toString(),
-                                style = MaterialTheme.typography.h6)
+                            Text(
+                                sessionMetrics.totalEnergyBurned?.inCalories.toString(),
+                                style = MaterialTheme.typography.h6
+                            )
                             RecordsIconButton(sessionMetrics.uid, SeriesRecordsType.CALORIES, onDetailsClick)
                         }
                     }
                 }
 
-                // Heart rate
+                // ---------- Heart rate ----------
                 item {
                     SessionBlock(label = stringResource(R.string.hr_stats)) {
                         Row(
@@ -205,7 +215,7 @@ fun ExerciseSessionDetailScreen(
     }
 }
 
-/** Simple block with label, value and divider */
+/** Small block with label, content and divider. */
 @Composable
 private fun SessionBlock(label: String, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
@@ -221,6 +231,7 @@ private fun SessionBlock(label: String, content: @Composable () -> Unit) {
     }
 }
 
+/** Chevron button that navigates to the time-series details. */
 @Composable
 fun RecordsIconButton(
     uid: String,

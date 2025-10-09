@@ -1,5 +1,8 @@
 package com.example.myhealth.presentation.screen.exercisesession
 
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.CompletedSessionsStore
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -18,19 +21,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.myhealth.data.ExerciseSession
 import com.example.myhealth.presentation.component.ExerciseSessionRow
-import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
 import java.time.LocalDate
 
 /**
- * Workout dashboard (Material 2)
+ * Workout dashboard (Material 2).
  *
  * Rules:
- * - Big number in the ring = today's logged sessions (planned + extras)
- * - Progress bar           = completed planned tasks / planned tasks (planned-only progress)
- * - The list shows only today's sessions
+ * - Big number in the circular area = total sessions logged today (planned + extra).
+ * - Progress bar                    = completed planned tasks / planned tasks (planned-only).
+ * - The list below shows only today's sessions.
  *
- * NOTE: start/end are ZonedDateTime in your model and are passed as ZonedDateTime
- *       to ExerciseSessionRow to match its signature. No Long/epoch conversion here.
+ * This file keeps ZonedDateTime end-to-end. We pass ZonedDateTime to ExerciseSessionRow
+ * to match your component signature, so there is no Long/epoch conversion here.
  */
 @Composable
 fun WorkoutDashboardM2(
@@ -46,52 +48,68 @@ fun WorkoutDashboardM2(
     val context = LocalContext.current
     val today = remember { LocalDate.now() }
 
-    // 1) Read planned tasks for today (written by Plan screen)
+    // ----- Stores -----
     val tasksStore = remember { PlanTasksStore(context.applicationContext) }
-    val todayTasks by remember { mutableStateOf(tasksStore.getTasks(today)) }
-    val plannedCount = todayTasks.size
+    val completedStore = remember { CompletedSessionsStore(context.applicationContext) }
 
-    // 2) How many planned are completed:
-    //    If today's Plan title is marked done in PlanProgressStore -> all planned considered done.
-    val progressStore = remember { PlanProgressStore(context.applicationContext) }
-    val todayPlanTitle = remember { tasksStore.getDayTitle(today) }
-    val completedPlannedCount = remember(plannedCount, todayPlanTitle) {
-        if (plannedCount == 0) 0
-        else if (todayPlanTitle != null && progressStore.isDone(today, todayPlanTitle)) plannedCount
-        else 0
+    // ----- Planned count (mutable so Quick Add can bump it immediately) -----
+    var plannedCount by remember { mutableStateOf(tasksStore.getTasks(today).size) }
+
+    // ----- Today sessions (derived from incoming list) -----
+    var todaySessions by remember { mutableStateOf(sessionsList.filter { it.isSameDate(today) }) }
+    LaunchedEffect(sessionsList) {
+        todaySessions = sessionsList.filter { it.isSameDate(today) }
     }
 
-    // 3) Today's sessions (planned + extras). Keep ZonedDateTime end-to-end.
-    val todaySessions = remember(sessionsList) { sessionsList.filter { it.isSameDate(today) } }
-    val loggedCount = todaySessions.size
+    // ----- Completed count: recompute whenever today's sessions change -----
+    var completedCount by remember { mutableStateOf(0) }
+    LaunchedEffect(todaySessions) {
+        completedCount = completedStore.countCompleted(today, todaySessions.map { it.id })
+    }
 
-    // 4) Planned progress (planned-only)
-    val progress = if (plannedCount == 0) 0f else (completedPlannedCount / plannedCount.toFloat())
+    // ----- Planned progress -----
+    val progress = if (plannedCount == 0) 0f
+    else (minOf(completedCount, plannedCount) / plannedCount.toFloat())
 
     Column(modifier.fillMaxSize()) {
 
-        // --- HERO: big number = loggedCount; progress = completed/planned ---
+        // ---- HERO: big number (loggedCount), progress (completed/planned) ----
         HeroSectionM2(
-            bigNumber = loggedCount,
-            planned = plannedCount,
-            completed = completedPlannedCount,
-            progress = progress
+            bigNumber = todaySessions.size,  // logged = planned + extra
+            planned   = plannedCount,
+            completed = completedCount,
+            progress  = progress
         )
 
-        // --- Background read permission banner (unchanged) ---
+        // ---- Background read permission banner ----
         BackgroundReadRequest(
             backgroundReadAvailable = backgroundReadAvailable,
             backgroundReadGranted = backgroundReadGranted,
             onRequestBgRead = onRequestBgRead
         )
 
-        // --- Quick actions (extras only; do not affect progress) ---
-        QuickActionsRowM2(onQuickAdd = onInsertClick)
+        // ---- Quick actions：现在会“插入样本 + 把今天的计划数 +1 并持久化” ----
+        QuickActionsRowM2(
+            onQuickAdd = {
+                // 1) Insert a sample session (你原有的逻辑)
+                onInsertClick()
+                // 2) Persist a lightweight planned item for today, and update UI counter
+                //    If your PlanTasksStore method name不同（如 add 或 addTaskForDate），把下面一行换成你的实际方法即可。
+                tasksStore.addTask(today, "Quick add")
+                plannedCount = tasksStore.getTasks(today).size
+            }
+        )
 
-        // --- Recommendation card (unchanged) ---
-        RecommendationCardM2(onAdd = onInsertClick)
+        // ---- Simple recommendation card ----
+        RecommendationCardM2(
+            onAdd = {
+                onInsertClick()
+                tasksStore.addTask(today, "Recommendation")
+                plannedCount = tasksStore.getTasks(today).size
+            }
+        )
 
-        // --- Title ---
+        // ---- Title for today's list ----
         Text(
             if (plannedCount > 0) "Today's sessions ($plannedCount planned)" else "Today's sessions",
             modifier = Modifier
@@ -100,7 +118,7 @@ fun WorkoutDashboardM2(
             style = MaterialTheme.typography.subtitle1
         )
 
-        // --- List: only today's sessions (ZonedDateTime → ZonedDateTime) ---
+        // ---- List: only show sessions of today ----
         if (todaySessions.isEmpty()) {
             EmptyState()
         } else {
@@ -113,8 +131,8 @@ fun WorkoutDashboardM2(
                 items(todaySessions, key = { it.id }) { s ->
                     val appInfo = s.sourceAppInfo
                     ExerciseSessionRow(
-                        start = s.startTime,    // ZonedDateTime expected by your row
-                        end = s.endTime,        // ZonedDateTime expected by your row
+                        start = s.startTime,   // keep ZonedDateTime
+                        end = s.endTime,       // keep ZonedDateTime
                         uid = s.id,
                         name = s.title ?: "No title",
                         sourceAppName = appInfo?.appLabel ?: "Unknown app",
@@ -131,13 +149,13 @@ fun WorkoutDashboardM2(
     }
 }
 
-/* ====================== Sub-components (styling unchanged) ====================== */
+/* ====================== Sub-components (styling consistent with M2) ====================== */
 
 @Composable
 private fun HeroSectionM2(
     bigNumber: Int,   // today's logged sessions (planned + extras)
     planned: Int,     // number of planned tasks today
-    completed: Int,   // number of completed planned tasks
+    completed: Int,   // number of completed planned tasks today
     progress: Float   // completed / planned
 ) {
     Card(
@@ -152,7 +170,7 @@ private fun HeroSectionM2(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Circular big number
+            // Circular area with big number and progress ring
             Box(Modifier.size(110.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
                     progress = 1f,
@@ -283,7 +301,7 @@ private fun EmptyState() {
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Use AutoMirrored icon to avoid the deprecation warning.
+            // AutoMirrored variant to avoid the deprecation warning.
             Icon(Icons.AutoMirrored.Filled.DirectionsRun, contentDescription = null, tint = Color.Gray)
             Spacer(Modifier.height(8.dp))
             Text("No sessions yet.", color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
@@ -301,7 +319,6 @@ private fun EmptyState() {
 /** True if the session belongs to the given calendar date (local timezone). */
 private fun ExerciseSession.isSameDate(date: LocalDate): Boolean {
     return try {
-        // startTime is ZonedDateTime in your model
         this.startTime.toLocalDate() == date
     } catch (_: Throwable) {
         false

@@ -5,12 +5,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -23,7 +22,9 @@ import com.example.myhealth.presentation.component.ExerciseSessionDetailsMinMaxA
 import com.example.myhealth.presentation.screen.recordlist.RecordType
 import com.example.myhealth.presentation.screen.recordlist.SeriesRecordsType
 import com.example.myhealth.presentation.theme.HealthConnectTheme
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.CompletedSessionsStore
 import java.time.Duration
+import java.time.LocalDate
 import java.util.UUID
 
 @Composable
@@ -52,6 +53,13 @@ fun ExerciseSessionDetailScreen(
     }
 
     if (uiState != ExerciseSessionDetailViewModel.UiState.Uninitialized) {
+        val context = LocalContext.current
+        val today = remember { LocalDate.now() }
+        val completedStore = remember { CompletedSessionsStore(context.applicationContext) }
+        var isCompleted by remember {
+            mutableStateOf(completedStore.isCompleted(today, sessionMetrics.uid))
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -80,6 +88,42 @@ fun ExerciseSessionDetailScreen(
                         style = MaterialTheme.typography.caption,
                         color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
                     )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // Completed checkbox (affects Workout dashboard progress)
+                item {
+                    Card(
+                        elevation = 0.dp,
+                        backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.03f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = isCompleted,
+                                onCheckedChange = { checked ->
+                                    isCompleted = checked
+                                    completedStore.setCompleted(today, sessionMetrics.uid, checked)
+                                }
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Mark as completed", style = MaterialTheme.typography.subtitle2)
+                                Text(
+                                    "This toggles today's progress on the Workout dashboard.",
+                                    style = MaterialTheme.typography.caption,
+                                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Divider()
                     Spacer(Modifier.height(8.dp))
                 }
 
@@ -136,7 +180,7 @@ fun ExerciseSessionDetailScreen(
                     }
                 }
 
-                // HR
+                // Heart rate
                 item {
                     SessionBlock(label = stringResource(R.string.hr_stats)) {
                         Row(

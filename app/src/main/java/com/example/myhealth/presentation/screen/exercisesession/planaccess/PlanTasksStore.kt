@@ -1,4 +1,3 @@
-// file: app/src/main/java/com/example/myhealth/presentation/screen/exercisesession/planaccess/PlanTasksStore.kt
 package com.example.myhealth.presentation.screen.exercisesession.planaccess
 
 import android.content.Context
@@ -11,41 +10,35 @@ import java.util.UUID
 /**
  * Lightweight day-plan store backed by SharedPreferences.
  *
- * - Key:  plan_tasks_<yyyy-MM-dd>
- *         Value is newline-joined rows; each row is a task serialized as:
- *         "taskId§title§type§target§completed"
- *         type      : optional tag (e.g., "synthetic")
- *         target    : minutes (nullable)
- *         completed : "1" or "0" (if missing -> treated as false for backward compatibility)
+ * Keys per date:
+ *  - plan_tasks_<yyyy-MM-dd> : newline-joined rows
+ *  - plan_title_<yyyy-MM-dd> : optional day title
  *
- * - Key:  plan_title_<yyyy-MM-dd>
- *         Optional display title for that day.
- *
- * This class is intentionally simple so you can swap it with Room/remote later without
- * touching the UI code.
+ * Row format (fields are separated by '§'):
+ *   taskId § title § type § target § completed
+ *   - type: arbitrary tag (e.g. "synthetic"); may be empty
+ *   - target: minutes (Int?); serialized as string, may be empty
+ *   - completed: "1" or "0"; missing -> treated as false (backward compatibility)
  */
 class PlanTasksStore(private val context: Context) {
 
-    /** Single planned task model stored in the SP. */
+    /** Single planned task saved in the store. */
     data class PlanTask(
         val taskId: String = UUID.randomUUID().toString(),
         val title: String,
-        val type: String? = null,   // arbitrary tag, e.g., "synthetic"
-        val target: Int? = null,    // minutes
+        val type: String? = null,  // e.g. "synthetic"
+        val target: Int? = null,   // minutes
         val completed: Boolean = false
     )
 
     private val sp: SharedPreferences
         get() = context.getSharedPreferences("plan_tasks_store", Context.MODE_PRIVATE)
-
     private val df = DateTimeFormatter.ISO_LOCAL_DATE
 
     private fun keyTasks(date: LocalDate) = "plan_tasks_${df.format(date)}"
     private fun keyTitle(date: LocalDate) = "plan_title_${df.format(date)}"
 
-    /* ------------------------------------------------------------------------------------------
-     * Core CRUD
-     * ------------------------------------------------------------------------------------------ */
+    /* ---------------- Core CRUD ---------------- */
 
     /** Overwrite tasks for a date and optionally update its title. */
     fun setTasks(date: LocalDate, dayTitle: String?, tasks: List<PlanTask>) {
@@ -64,22 +57,6 @@ class PlanTasksStore(private val context: Context) {
         }
     }
 
-    /**
-     * Overwrite tasks for a date BUT keep existing "synthetic" tasks (quick-add placeholders).
-     * Use this when the Plan page regenerates a day's template so quick-added tasks survive.
-     */
-    fun setTasksKeepingSynthetic(
-        date: LocalDate,
-        dayTitle: String?,
-        newTasks: List<PlanTask>
-    ) {
-        // keep existing synthetic items from current storage
-        val synthetic = getTasks(date).filter { it.type == "synthetic" }
-        // merge template + synthetic (template comes first so it stays visually before)
-        val merged = newTasks + synthetic
-        setTasks(date, dayTitle, merged)
-    }
-
     /** Read tasks for a date. Returns an empty list if nothing is stored. */
     fun getTasks(date: LocalDate): List<PlanTask> {
         val raw = sp.getString(keyTasks(date), null) ?: return emptyList()
@@ -91,10 +68,9 @@ class PlanTasksStore(private val context: Context) {
                 val p = line.split("§")
                 PlanTask(
                     taskId = p.getOrNull(0) ?: UUID.randomUUID().toString(),
-                    title   = p.getOrNull(1) ?: "Planned task",
-                    type    = p.getOrNull(2)?.ifBlank { null },
-                    target  = p.getOrNull(3)?.toIntOrNull(),
-                    // Back-compat: older rows have no index 4 -> treat as not completed
+                    title  = p.getOrNull(1) ?: "Planned task",
+                    type   = p.getOrNull(2)?.ifBlank { null },
+                    target = p.getOrNull(3)?.toIntOrNull(),
                     completed = p.getOrNull(4)?.let { it == "1" } ?: false
                 )
             }.toList()
@@ -108,9 +84,7 @@ class PlanTasksStore(private val context: Context) {
         }
     }
 
-    /* ------------------------------------------------------------------------------------------
-     * Day title only
-     * ------------------------------------------------------------------------------------------ */
+    /* ---------------- Day title ---------------- */
 
     fun getDayTitle(date: LocalDate): String? = sp.getString(keyTitle(date), null)
 
@@ -121,11 +95,9 @@ class PlanTasksStore(private val context: Context) {
         }
     }
 
-    /* ------------------------------------------------------------------------------------------
-     * Convenience APIs for Plan & Workout dashboards
-     * ------------------------------------------------------------------------------------------ */
+    /* ---------------- Convenience APIs ---------------- */
 
-    /** Append a new task to the date and return it. */
+    /** Append one task and return it. */
     fun addTask(
         date: LocalDate,
         title: String,
@@ -146,7 +118,7 @@ class PlanTasksStore(private val context: Context) {
         setTasks(date, getDayTitle(date), filtered)
     }
 
-    /** Mark a task completed / not completed. */
+    /** Mark a single task completed / not completed. */
     fun setCompleted(date: LocalDate, taskId: String, completed: Boolean) {
         val updated = getTasks(date).map {
             if (it.taskId == taskId) it.copy(completed = completed) else it
@@ -154,23 +126,52 @@ class PlanTasksStore(private val context: Context) {
         setTasks(date, getDayTitle(date), updated)
     }
 
-    /** Handy counters used by dashboards. */
+    /**
+     * Replace tasks for the date with a new template BUT KEEP any existing
+     * "synthetic" tasks (and their completion states). Prevents Quick Add tasks
+     * from being lost when Plan re-saves today's template.
+     */
+    /**
+     * Replace tasks for the date with a new template BUT:
+     *  1) keep existing completion flags for tasks with the same taskId
+     *  2) keep all existing "synthetic" tasks (and their completion states)
+     */
+    fun setTasksKeepingSynthetic(
+        date: LocalDate,
+        dayTitle: String?,
+        newTasks: List<PlanTask>
+    ) {
+        val existing = getTasks(date)
+        val existingById = existing.associateBy { it.taskId }
+
+        // keep completed for same-id planned tasks
+        val mergedPlanned = newTasks.map { nt ->
+            val old = existingById[nt.taskId]
+            if (old != null && old.type != "synthetic") {
+                nt.copy(completed = old.completed)
+            } else {
+                nt
+            }
+        }
+
+        // keep all previously quick-added synthetic tasks
+        val synthetic = existing.filter { it.type == "synthetic" }
+
+        setTasks(date, dayTitle, mergedPlanned + synthetic)
+    }
+
+
+    /** Handy helpers used by dashboards. */
     fun count(date: LocalDate): Int = getTasks(date).size
     fun completedCount(date: LocalDate): Int = getTasks(date).count { it.completed }
 
-    /**
-     * Add a "synthetic" placeholder task for Quick Add from the Workout page.
-     * This increases the planned count instantly while keeping the weekly template clean.
-     */
-    fun addSyntheticTask(
-        date: LocalDate,
-        title: String,
-        target: Int? = null
-    ): PlanTask = addTask(date, title = title, type = "synthetic", target = target)
+    /** Add a "synthetic" placeholder task (used by Quick Add). */
+    fun addSyntheticTask(date: LocalDate, title: String, target: Int? = null): PlanTask =
+        addTask(date, title = title, type = "synthetic", target = target)
 
     /**
-     * Remove one "synthetic" task if present (when deleting a quick-added session).
-     * @return true if one synthetic task was found and removed
+     * Remove one "synthetic" task if present (e.g. when deleting a quick-added session).
+     * @return the removed task if any, otherwise null
      */
     fun consumeOneSyntheticTask(date: LocalDate): Boolean {
         val tasks = getTasks(date)
@@ -181,9 +182,7 @@ class PlanTasksStore(private val context: Context) {
         return true
     }
 
-    /* ------------------------------------------------------------------------------------------
-     * Change listeners (so Workout can auto-refresh when Plan writes today)
-     * ------------------------------------------------------------------------------------------ */
+    /* ---------------- Change listeners (so Workout auto-refreshes) ---------------- */
 
     fun addOnChangeListener(l: SharedPreferences.OnSharedPreferenceChangeListener) {
         sp.registerOnSharedPreferenceChangeListener(l)

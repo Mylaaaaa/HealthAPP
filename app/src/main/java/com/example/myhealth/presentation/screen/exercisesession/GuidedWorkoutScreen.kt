@@ -1,4 +1,5 @@
 package com.example.myhealth.presentation.screen.exercisesession
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
 
 import java.time.LocalDate
 import android.os.SystemClock
@@ -39,9 +40,10 @@ fun GuidedWorkoutScreen(
     onFinishRequest: () -> Unit, // host will open Summary (RPE/notes there)
 ) {
     val active = vm.activeWorkout ?: return
-
     val context = LocalContext.current
     val activeStore = remember { ActiveDayProgressStore(context.applicationContext) }
+    val planStore = remember { PlanTasksStore(context.applicationContext) }
+
     val today = remember { LocalDate.now() }
     val dayKey = remember(active.dayTitle) { active.dayTitle }
 

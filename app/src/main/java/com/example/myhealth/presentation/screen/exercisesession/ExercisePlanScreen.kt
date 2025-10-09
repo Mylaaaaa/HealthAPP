@@ -2,7 +2,8 @@
 package com.example.myhealth.presentation.screen.exercisesession
 
 import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
-
+import android.content.SharedPreferences
+import java.time.format.DateTimeFormatter
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -783,6 +784,7 @@ private fun titleForGoal(goal: Goal) = when (goal) {
 
 /* --------------------------- BottomSheet content ------------------------- */
 
+// === Replace the whole DayPlanSheet with this version ===
 @Composable
 private fun DayPlanSheet(
     day: PlanDay?,
@@ -790,36 +792,55 @@ private fun DayPlanSheet(
     onStart: (PlanDay) -> Unit,
     onQuickDone: (PlanDay) -> Unit
 ) {
+    val ctx = LocalContext.current.applicationContext
+    val store = remember { PlanTasksStore(ctx) }
+    val today = remember { LocalDate.now() }
+
     if (day == null) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
             Text("No day selected")
         }
         return
     }
 
+    /** 1) 确保今天的模板写入（并保留 synthetic），避免空表导致进度无法变化 */
+    fun ensureTodayTemplate() {
+        val current = store.getTasks(today)
+        if (current.isEmpty()) {
+            val template = day.items.mapIndexed { idx, item ->
+                PlanTasksStore.PlanTask(
+                    taskId = "d${today}-$idx",
+                    title = item
+                )
+            }
+            store.setTasksKeepingSynthetic(
+                date = today,
+                dayTitle = day.title,
+                newTasks = template
+            )
+        }
+    }
+
+    /** 2) 把今天所有任务的 completed 统一设置并写回同一 key（Dashboard 正在监听这个 key） */
+    fun setAllCompleted(value: Boolean) {
+        val list = store.getTasks(today)
+        if (list.isNotEmpty()) {
+            store.setTasks(
+                date = today,
+                dayTitle = store.getDayTitle(today),
+                tasks = list.map { it.copy(completed = value) }
+            )
+        }
+    }
+
     Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+        Modifier.fillMaxWidth().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Title
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Today, contentDescription = null, tint = MaterialTheme.colors.primary)
             Spacer(Modifier.width(8.dp))
             Text(day.title, style = MaterialTheme.typography.h6)
-        }
-
-        // Today's Action List
-        Card(elevation = 1.dp, shape = RoundedCornerShape(14.dp)) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                day.items.forEach { Text("• $it", style = MaterialTheme.typography.body2) }
-            }
         }
 
         if (isDoneToday) {
@@ -831,14 +852,27 @@ private fun DayPlanSheet(
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(modifier = Modifier.weight(1f), onClick = { onStart(day) }) {
+
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    ensureTodayTemplate()
+                    setAllCompleted(false)
+                    onStart(day)
+                }
+            ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text(if (isDoneToday) "Redo guided" else "Start guided")
             }
+
             OutlinedButton(
                 modifier = Modifier.weight(1f),
-                onClick = { onQuickDone(day) },
+                onClick = {
+                    ensureTodayTemplate()
+                    setAllCompleted(true)
+                    onQuickDone(day)
+                },
                 enabled = !isDoneToday
             ) {
                 Icon(Icons.Default.Check, contentDescription = null)

@@ -1,4 +1,5 @@
 package com.example.myhealth.presentation.screen.exercisesession
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
 
 import androidx.compose.ui.platform.LocalContext
 import java.time.LocalDate
@@ -17,10 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.permission.HealthPermission
 import com.example.myhealth.data.ExerciseSession
-import com.example.myhealth.presentation.component.ExerciseSessionRow
 
 /**
  * Exercise hub with four tabs:
@@ -30,6 +31,12 @@ import com.example.myhealth.presentation.component.ExerciseSessionRow
  * - Stats: weekly summary
  *
  * Guided and Summary are shown as fullscreen overlays above the tabs.
+ *
+ * CHANGES (non-destructive):
+ * - Replaced top TabRow with a BottomNavigation bar (as per your sketch).
+ * - Kept the original TabRow block in comments so nothing is lost.
+ * - When saving Summary, mirror Guided completion into PlanTasksStore so
+ *   the Workout page progress ring / "Completed" updates even if only one item is done.
  */
 @Composable
 fun ExerciseSessionScreen(
@@ -47,12 +54,15 @@ fun ExerciseSessionScreen(
     onPermissionsLaunch: (Set<String>) -> Unit = {},
     onInsertClick: () -> Unit = {},
     onDetailsClick: (String) -> Unit = {},
-    onDeleteClick: (String) -> Unit = {}
+    onDeleteClick: (String) -> Unit
 ) {
     val appContext = LocalContext.current.applicationContext
     val progressStore = remember { PlanProgressStore(appContext) }
+    // Used to reflect Guided completion on Workout page (progress ring & "Completed")
+    val planStore = remember { PlanTasksStore(appContext) }
     val activeStore = remember { ActiveDayProgressStore(appContext) } // persistence for partial guided progress
 
+    // Keep your tab enum, but we'll render bottom navigation instead of TabRow
     var selectedTab by rememberSaveable { mutableStateOf(ExerciseTab.Workout) }
 
     // Guided & Summary overlays
@@ -63,9 +73,25 @@ fun ExerciseSessionScreen(
 
     Box(Modifier.fillMaxSize()) {
 
-        // ---------- BASE TABS ----------
-        Scaffold { padding ->
+        // ---------- BASE CONTENT WITH BOTTOM NAV ----------
+        Scaffold(
+            bottomBar = {
+                // BottomNavigation mirrors your former tabs
+                BottomNavigation {
+                    ExerciseTab.values().forEach { tab ->
+                        BottomNavigationItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            icon = { Icon(tab.icon, contentDescription = tab.title) },
+                            label = { Text(tab.title) }
+                        )
+                    }
+                }
+            }
+        ) { padding ->
             Column(Modifier.padding(padding)) {
+
+                /* ---------- ORIGINAL TOP TABROW (kept for reference; no longer used) ----------
                 TabRow(selectedTabIndex = selectedTab.ordinal) {
                     ExerciseTab.values().forEachIndexed { i, tab ->
                         Tab(
@@ -76,6 +102,7 @@ fun ExerciseSessionScreen(
                         )
                     }
                 }
+                ------------------------------------------------------------------------------ */
 
                 when (selectedTab) {
                     ExerciseTab.Plan -> ExercisePlanScreen(
@@ -149,17 +176,40 @@ fun ExerciseSessionScreen(
             WorkoutSummaryScreen(
                 preview = previewSummary!!,
                 onSave = { rpe, notes ->
-                    // Persist finished workout
+                    // Persist finished workout to history
                     val saved = guidedVm.finish(overallRpe = rpe, notes = notes)
                     progressStore.markDone(
                         LocalDate.now(),
                         saved?.title ?: previewSummary!!.title
                     )
-                    // Clear partial progress (new run will start clean)
+                    // Clear partial progress for this day
                     activeStore.clear(
                         LocalDate.now(),
                         saved?.title ?: previewSummary!!.title
                     )
+
+                    // === Mirror Guided completion back into today's PlanTasksStore ===
+                    // Reason: Workout page progress ring & "Completed" read from PlanTasksStore.
+                    // We set per-item completion so even partial completion is reflected immediately.
+                    val today = LocalDate.now()
+                    val currentTasks = planStore.getTasks(today)
+                    if (currentTasks.isNotEmpty()) {
+                        // Keep quick-added (synthetic) tasks intact; update only planned items by index order.
+                        val (planned, synthetic) = currentTasks.partition { it.type != "synthetic" }
+                        val finished = (saved ?: previewSummary!!).items
+                        val updatedPlanned = planned.mapIndexed { index, t ->
+                            val st = finished.getOrNull(index)?.status
+                            // If you only want DONE to count: (st == ItemStatus.DONE)
+                            val doneFlag = (st == ItemStatus.DONE)
+                            t.copy(completed = doneFlag)
+                        }
+                        planStore.setTasks(
+                            date = today,
+                            dayTitle = planStore.getDayTitle(today),
+                            tasks = updatedPlanned + synthetic
+                        )
+                    }
+                    // === end mirror ===
 
                     // Close summary and go to Plan (saved)
                     previewSummary = null
@@ -168,18 +218,16 @@ fun ExerciseSessionScreen(
                     selectedTab = ExerciseTab.Plan
                 },
                 onClose = {
-                    // ⬅️ This is the key change you asked for:
-                    // When user hits X on Summary, return to the previous screen (Guided/Play).
+                    // Back to Guided without losing state
                     previewSummary = null
                     showSummary = false
-                    // DO NOT clear the VM; keep current guided state so user resumes seamlessly
                     showGuided = true
                 }
             )
         }
     }
 }
-
+// === Restore missing WorkoutPage wrapper ===
 @Composable
 fun WorkoutPage(
     modifier: Modifier = Modifier,
@@ -202,7 +250,9 @@ fun WorkoutPage(
         onDeleteClick = onDeleteClick
     )
 }
+
 // ===== Sub-components (Material 2) =====
+// (All your original helper composables & enums are kept below.)
 
 @Composable
 private fun HeroSectionM2(
@@ -321,12 +371,9 @@ private fun RecommendationCardM2(onAdd: () -> Unit) {
     }
 }
 
-
-// -------------------- ENUM & SUB COMPONENTS --------------------
-
 private enum class ExerciseTab(
     val title: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val icon: ImageVector
 ) {
     Plan("Plan", Icons.Default.Rule),
     Workout("Workout", Icons.Default.FitnessCenter),

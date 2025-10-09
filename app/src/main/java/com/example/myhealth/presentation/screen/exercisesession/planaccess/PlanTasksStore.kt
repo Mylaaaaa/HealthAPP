@@ -128,4 +128,32 @@ class PlanTasksStore(private val context: Context) {
 
     /** Handy helper used by dashboards. */
     fun count(date: LocalDate): Int = getTasks(date).size
+    /**
+     * Add a "synthetic" placeholder task for Quick Add from the Workout page.
+     * This increases the planned count instantly.
+     */
+    fun addSyntheticTask(
+        date: LocalDate,
+        title: String,
+        target: Int? = null
+    ): PlanTask {
+        // reuse normal addTask() but tag as synthetic
+        return addTask(date, title = title, type = "synthetic", target = target)
+    }
+
+    /**
+     * Remove one "synthetic" task if present.
+     * This is used when deleting a session added via Quick Add,
+     * so the Planned count decreases by 1.
+     *
+     * @return true if one synthetic task was found and removed
+     */
+    fun consumeOneSyntheticTask(date: LocalDate): Boolean {
+        val tasks = getTasks(date)
+        val idx = tasks.indexOfFirst { it.type == "synthetic" }
+        if (idx == -1) return false
+        val newList = tasks.toMutableList().also { it.removeAt(idx) }
+        setTasks(date, getDayTitle(date), newList)
+        return true
+    }
 }

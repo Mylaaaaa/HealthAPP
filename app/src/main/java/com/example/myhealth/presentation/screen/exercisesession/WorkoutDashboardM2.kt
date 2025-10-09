@@ -1,8 +1,5 @@
 package com.example.myhealth.presentation.screen.exercisesession
 
-import com.example.myhealth.presentation.screen.exercisesession.planaccess.CompletedSessionsStore
-import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
-
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -21,18 +18,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.myhealth.data.ExerciseSession
 import com.example.myhealth.presentation.component.ExerciseSessionRow
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.CompletedSessionsStore
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
 import java.time.LocalDate
 
 /**
  * Workout dashboard (Material 2).
  *
- * Rules:
- * - Big number in the circular area = total sessions logged today (planned + extra).
- * - Progress bar                    = completed planned tasks / planned tasks (planned-only).
- * - The list below shows only today's sessions.
- *
- * This file keeps ZonedDateTime end-to-end. We pass ZonedDateTime to ExerciseSessionRow
- * to match your component signature, so there is no Long/epoch conversion here.
+ * - Big number: today's logged sessions (planned + extra)
+ * - Planned: count of today's plan tasks from PlanTasksStore
+ * - Completed: number of planned tasks marked completed (via CompletedSessionsStore)
+ * - Deleting a "Quick Add" session will also consume ONE synthetic plan item -> planned -1
  */
 @Composable
 fun WorkoutDashboardM2(
@@ -45,71 +41,79 @@ fun WorkoutDashboardM2(
     onDetailsClick: (String) -> Unit,
     onDeleteClick: (String) -> Unit
 ) {
-    val context = LocalContext.current
+    val app = LocalContext.current.applicationContext
     val today = remember { LocalDate.now() }
 
-    // ----- Stores -----
-    val tasksStore = remember { PlanTasksStore(context.applicationContext) }
-    val completedStore = remember { CompletedSessionsStore(context.applicationContext) }
+    // Stores
+    val tasksStore = remember { PlanTasksStore(app) }
+    val completedStore = remember { CompletedSessionsStore(app) }
 
-    // ----- Planned count (mutable so Quick Add can bump it immediately) -----
-    var plannedCount by remember { mutableStateOf(tasksStore.getTasks(today).size) }
-
-    // ----- Today sessions (derived from incoming list) -----
+    // Derive today's sessions from incoming list
     var todaySessions by remember { mutableStateOf(sessionsList.filter { it.isSameDate(today) }) }
     LaunchedEffect(sessionsList) {
         todaySessions = sessionsList.filter { it.isSameDate(today) }
     }
 
-    // ----- Completed count: recompute whenever today's sessions change -----
+    // Planned count (kept as state so we can refresh after add/delete)
+    var plannedCount by remember { mutableStateOf(tasksStore.count(today)) }
+
+    // Completed count (recompute whenever the set of today's sessions changes)
     var completedCount by remember { mutableStateOf(0) }
     LaunchedEffect(todaySessions) {
         completedCount = completedStore.countCompleted(today, todaySessions.map { it.id })
     }
 
-    // ----- Planned progress -----
-    val progress = if (plannedCount == 0) 0f
-    else (minOf(completedCount, plannedCount) / plannedCount.toFloat())
+    val progress = when (plannedCount) {
+        0 -> 0f
+        else -> (minOf(completedCount, plannedCount) / plannedCount.toFloat())
+    }.coerceIn(0f, 1f)
 
     Column(modifier.fillMaxSize()) {
 
-        // ---- HERO: big number (loggedCount), progress (completed/planned) ----
+        // ---- HERO ----
         HeroSectionM2(
-            bigNumber = todaySessions.size,  // logged = planned + extra
-            planned   = plannedCount,
+            bigNumber = todaySessions.size,
+            planned = plannedCount,
             completed = completedCount,
-            progress  = progress
+            progress = progress
         )
 
-        // ---- Background read permission banner ----
+        // ---- Permission banner ----
         BackgroundReadRequest(
             backgroundReadAvailable = backgroundReadAvailable,
             backgroundReadGranted = backgroundReadGranted,
             onRequestBgRead = onRequestBgRead
         )
 
-        // ---- Quick actions：现在会“插入样本 + 把今天的计划数 +1 并持久化” ----
+        // ---- Quick Add (each will: add a synthetic plan item, then insert a sample session) ----
         QuickActionsRowM2(
-            onQuickAdd = {
-                // 1) Insert a sample session (你原有的逻辑)
+            onQuickAddWalk = {
+                tasksStore.addSyntheticTask(today, title = "Walk 30m", target = 30)
+                plannedCount = tasksStore.count(today)     // refresh planned immediately
+                onInsertClick()                             // your existing insert logic
+            },
+            onQuickAddRun = {
+                tasksStore.addSyntheticTask(today, title = "Run 25m", target = 25)
+                plannedCount = tasksStore.count(today)
                 onInsertClick()
-                // 2) Persist a lightweight planned item for today, and update UI counter
-                //    If your PlanTasksStore method name不同（如 add 或 addTaskForDate），把下面一行换成你的实际方法即可。
-                tasksStore.addTask(today, "Quick add")
-                plannedCount = tasksStore.getTasks(today).size
+            },
+            onQuickAddStrength = {
+                tasksStore.addSyntheticTask(today, title = "Strength 35m", target = 35)
+                plannedCount = tasksStore.count(today)
+                onInsertClick()
             }
         )
 
-        // ---- Simple recommendation card ----
+        // ---- Recommendation card (same behavior as Quick Add) ----
         RecommendationCardM2(
             onAdd = {
+                tasksStore.addSyntheticTask(today, title = "Easy Walk 30m", target = 30)
+                plannedCount = tasksStore.count(today)
                 onInsertClick()
-                tasksStore.addTask(today, "Recommendation")
-                plannedCount = tasksStore.getTasks(today).size
             }
         )
 
-        // ---- Title for today's list ----
+        // ---- Title ----
         Text(
             if (plannedCount > 0) "Today's sessions ($plannedCount planned)" else "Today's sessions",
             modifier = Modifier
@@ -118,7 +122,7 @@ fun WorkoutDashboardM2(
             style = MaterialTheme.typography.subtitle1
         )
 
-        // ---- List: only show sessions of today ----
+        // ---- List ----
         if (todaySessions.isEmpty()) {
             EmptyState()
         } else {
@@ -131,13 +135,21 @@ fun WorkoutDashboardM2(
                 items(todaySessions, key = { it.id }) { s ->
                     val appInfo = s.sourceAppInfo
                     ExerciseSessionRow(
-                        start = s.startTime,   // keep ZonedDateTime
-                        end = s.endTime,       // keep ZonedDateTime
+                        start = s.startTime,
+                        end = s.endTime,
                         uid = s.id,
                         name = s.title ?: "No title",
                         sourceAppName = appInfo?.appLabel ?: "Unknown app",
                         sourceAppIcon = appInfo?.icon,
-                        onDeleteClick = { uid -> onDeleteClick(uid) },
+                        onDeleteClick = { uid ->
+                            // 1) Consume ONE synthetic plan item for today (if any)
+                            val consumed = tasksStore.consumeOneSyntheticTask(today)
+                            if (consumed) {
+                                plannedCount = tasksStore.count(today) // refresh planned
+                            }
+                            // 2) Proceed with actual session deletion (your ViewModel / DB)
+                            onDeleteClick(uid)
+                        },
                         onDetailsClick = { uid -> onDetailsClick(uid) }
                     )
                     Spacer(Modifier.height(8.dp))
@@ -149,13 +161,13 @@ fun WorkoutDashboardM2(
     }
 }
 
-/* ====================== Sub-components (styling consistent with M2) ====================== */
+/* ====================== Sub-components ====================== */
 
 @Composable
 private fun HeroSectionM2(
-    bigNumber: Int,   // today's logged sessions (planned + extras)
-    planned: Int,     // number of planned tasks today
-    completed: Int,   // number of completed planned tasks today
+    bigNumber: Int,   // logged sessions today (planned + extras)
+    planned: Int,     // planned tasks for today
+    completed: Int,   // completed planned tasks
     progress: Float   // completed / planned
 ) {
     Card(
@@ -170,7 +182,7 @@ private fun HeroSectionM2(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Circular area with big number and progress ring
+            // Circular indicator with big number
             Box(Modifier.size(110.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
                     progress = 1f,
@@ -221,16 +233,20 @@ private fun MetricRowM2(label: String, value: String) {
 }
 
 @Composable
-private fun QuickActionsRowM2(onQuickAdd: () -> Unit) {
+private fun QuickActionsRowM2(
+    onQuickAddWalk: () -> Unit,
+    onQuickAddRun: () -> Unit,
+    onQuickAddStrength: () -> Unit
+) {
     Row(
         Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        OutlinedButton(onClick = onQuickAdd) { Text("Add walk 30m") }
-        OutlinedButton(onClick = onQuickAdd) { Text("Add run 25m") }
-        OutlinedButton(onClick = onQuickAdd) { Text("Add strength 35m") }
+        OutlinedButton(onClick = onQuickAddWalk) { Text("Add walk 30m") }
+        OutlinedButton(onClick = onQuickAddRun) { Text("Add run 25m") }
+        OutlinedButton(onClick = onQuickAddStrength) { Text("Add strength 35m") }
     }
 }
 
@@ -301,7 +317,6 @@ private fun EmptyState() {
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // AutoMirrored variant to avoid the deprecation warning.
             Icon(Icons.AutoMirrored.Filled.DirectionsRun, contentDescription = null, tint = Color.Gray)
             Spacer(Modifier.height(8.dp))
             Text("No sessions yet.", color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
@@ -314,13 +329,8 @@ private fun EmptyState() {
     }
 }
 
-/* ====================== Helpers ====================== */
+/* ---------------- Helpers ---------------- */
 
 /** True if the session belongs to the given calendar date (local timezone). */
-private fun ExerciseSession.isSameDate(date: LocalDate): Boolean {
-    return try {
-        this.startTime.toLocalDate() == date
-    } catch (_: Throwable) {
-        false
-    }
-}
+private fun ExerciseSession.isSameDate(date: LocalDate): Boolean =
+    runCatching { this.startTime.toLocalDate() == date }.getOrDefault(false)

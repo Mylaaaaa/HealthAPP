@@ -1,15 +1,19 @@
 // file: app/src/main/java/com/example/myhealth/presentation/screen/WelcomeScreen.kt
 package com.example.myhealth.presentation.screen
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Card
 import androidx.compose.material.Icon
@@ -28,7 +32,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -37,23 +41,32 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import com.example.myhealth.presentation.home.HomeUiState
 import com.example.myhealth.presentation.navigation.Screen
 import com.example.myhealth.presentation.theme.HealthConnectTheme
-import com.example.myhealth.presentation.home.HomeUiState
 import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Home screen rendering from HomeUiState. No DB required at this stage.
+ * Home screen rendering from HomeUiState (Material 2).
+ *
+ * Design goals:
+ * - A single, clear CTA row at the top (Start Exercise / Record Weight).
+ * - Reminder card uses "View plan" to avoid duplicating "Start Exercise".
+ * - 4-column feature grid with lively but subtle press feedback (no deprecated ripple).
+ * - Compact two-line titles and soft icon accents improve readability.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -85,17 +98,15 @@ fun WelcomeScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()) // whole page scrolls
+            .verticalScroll(rememberScrollState())
     ) {
 
-        // Gradient hero
+        // ---------- Gradient hero ----------
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF4C6FFF), Color(0xFF7C9BFF))
-                    )
+                    Brush.verticalGradient(listOf(Color(0xFF4C6FFF), Color(0xFF7C9BFF)))
                 )
                 .padding(horizontal = 16.dp, vertical = 18.dp)
         ) {
@@ -122,7 +133,7 @@ fun WelcomeScreen(
             }
         }
 
-        // Permission banners (conditional)
+        // ---------- Permission banners ----------
         if (!hasAllPermissions) {
             PermissionBanner(
                 text = "Some permissions are missing. Grant permissions to unlock auto-tracking.",
@@ -139,7 +150,7 @@ fun WelcomeScreen(
             Spacer(Modifier.height(4.dp))
         }
 
-        // CTAs
+        // ---------- Top CTAs (single source of truth) ----------
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -162,7 +173,22 @@ fun WelcomeScreen(
             )
         }
 
-        // Stat pills
+        // ---------- Reminder (no duplicate CTA) ----------
+        val stepsRemaining = max(0, stepGoal - steps)
+        val reminderText = when {
+            stepsRemaining > 0 -> "You're ${stepsRemaining} steps away from today's goal."
+            lastWeighInDaysAgo > 2 -> "No weigh-in for ${lastWeighInDaysAgo} days. Log a weight?"
+            else -> "Nice momentum! Keep it up today."
+        }
+        ReminderCard(
+            text = reminderText,
+            primaryText = "View plan",        // key change to avoid duplicating Start Exercise
+            secondaryText = "Record Weight",
+            onPrimary = { navController.navigate(Screen.ExerciseSessions.route) },
+            onSecondary = { navController.navigate(Screen.InputReadings.route) }
+        )
+
+        // ---------- Stat pills ----------
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -175,7 +201,7 @@ fun WelcomeScreen(
             item { StatPill(Icons.Filled.Accessibility, "${String.format(java.util.Locale.US, "%.1f", bodyWeightKg)} kg", "Weight", Color(0xFF00B894)) }
         }
 
-        // Weekly trends (sparklines + WoW change)
+        // ---------- Weekly trends ----------
         Row(
             Modifier
                 .fillMaxWidth()
@@ -220,28 +246,58 @@ fun WelcomeScreen(
             )
         }
 
-        // Reminder & tasks
-        val stepsRemaining = max(0, stepGoal - steps)
-        val reminderText = when {
-            stepsRemaining > 0 -> "You're ${stepsRemaining} steps away from today's goal."
-            lastWeighInDaysAgo > 2 -> "No weigh-in for ${lastWeighInDaysAgo} days. Log a weight?"
-            else -> "Nice momentum! Keep it up today."
-        }
-        ReminderCard(
-            text = reminderText,
-            primaryText = "Start Exercise",
-            secondaryText = "Record Weight",
-            onPrimary = { navController.navigate(Screen.ExerciseSessions.route) },
-            onSecondary = { navController.navigate(Screen.InputReadings.route) }
+        // ---------- Feature grid (4 columns, compact & lively) ----------
+        // ---------- Feature grid (4 columns, compact & lively) ----------
+        val entries = listOf(
+            NavEntry(Screen.Dashboard,        "Dashboard",         Icons.Filled.Dashboard),
+            NavEntry(Screen.ExerciseSessions,  "Exercise sessions", Icons.Filled.FitnessCenter),
+            NavEntry(Screen.SleepSessions,     "Sleep sessions",    Icons.Filled.Hotel),
+            NavEntry(Screen.Nutrition,         "Nutrition",         Icons.Filled.Restaurant),
+            NavEntry(Screen.Mind,              "Mindfulness",       Icons.Filled.SelfImprovement),
+            NavEntry(Screen.Reports,           "Reports",           Icons.Filled.Assessment),
+            NavEntry(Screen.InputReadings,     "Record weight",     Icons.Filled.Accessibility),
+            NavEntry(Screen.SettingsScreen,    "Settings",          Icons.Filled.Settings)
         )
 
-        // Streak & badge (UI only)
+        val columns = 4
+        val itemHeightDp = 108
+        val vSpacing = 12
+        val contentPaddingV = 12
+        val rows = (entries.size + columns - 1) / columns
+        val gridHeight = (rows * itemHeightDp + (rows - 1) * vSpacing + contentPaddingV).dp
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
+            userScrollEnabled = false,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(gridHeight),
+            verticalArrangement = Arrangement.spacedBy(vSpacing.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            items(entries.size) { index ->
+                val e = entries[index]
+                val tint = accentFor(index)
+                FeatureCard(
+                    icon = e.icon,
+                    title = e.title,
+                    tint = tint,
+                    onClick = { navController.navigate(e.screen.route) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+
+        // ---------- Streak & Badge ----------
         StreakBadgeRow(
             streakDays = currentStreakDays,
             showBadgeUnlocked = showBadgeUnlocked
         )
 
-        // Goal rings (above Explore)
+        // ---------- Goal rings ----------
         Row(
             Modifier
                 .fillMaxWidth()
@@ -271,20 +327,20 @@ fun WelcomeScreen(
             )
         }
 
-        // Explore label
+        // ---------- Explore ----------
         Text(
             text = "Explore",
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
         )
 
-        // Health tip
+        // ---------- Health tip ----------
         HealthTipCard(
             tip = "Avoid screens 1 hour before bed.",
             actionText = "Learn more"
         ) { navController.navigate(Screen.SleepSessions.route) }
 
-        // Recent activity (3 items + View all)
+        // ---------- Recent activity ----------
         RecentActivitySection(
             items = ui.recent.map {
                 RecentItem(
@@ -307,54 +363,20 @@ fun WelcomeScreen(
                 }
             }
         )
-
-        // ---------- Feature grid (parent scrolls; grid itself doesn't) ----------
-        val entries = listOf(
-            NavEntry(Screen.Dashboard,        "Dashboard",         Icons.Filled.Dashboard),
-            NavEntry(Screen.ExerciseSessions,  "Exercise sessions", Icons.Filled.FitnessCenter),
-            NavEntry(Screen.SleepSessions,     "Sleep sessions",    Icons.Filled.Hotel),
-            NavEntry(Screen.Nutrition,         "Nutrition",         Icons.Filled.Restaurant),
-            NavEntry(Screen.Mind,              "Mindfulness",       Icons.Filled.SelfImprovement),
-            NavEntry(Screen.Reports,           "Reports",           Icons.Filled.Assessment),
-            NavEntry(Screen.InputReadings,     "Record weight",     Icons.Filled.Accessibility),
-            NavEntry(Screen.SettingsScreen,    "Settings",          Icons.Filled.Settings)
-        )
-        // ^^^ Removed the .filter { it.screen.hasMenuItem } so Record weight is never dropped.
-
-        // Compute a fixed height so grid follows the parent scroll
-        val itemHeightDp = 118
-        val vSpacingDp = 14
-        val rows = (entries.size + 1) / 2
-        val gridHeight = (rows * itemHeightDp + max(0, rows - 1) * vSpacingDp + 8).dp
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            userScrollEnabled = false,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(gridHeight),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
-        ) {
-            items(entries) { e ->
-                FeatureCard(
-                    icon = e.icon,
-                    title = e.title,
-                    onClick = { navController.navigate(e.screen.route) }
-                )
-            }
-        }
-        // -----------------------------------------------------------------------
     }
 }
 
-/* ---------- Reused components (concise English comments) ---------- */
+/* -------------------- Reused components -------------------- */
 
 @Composable
 private fun CapsuleChip(text: String) {
     Card(backgroundColor = Color.White.copy(alpha = 0.18f), elevation = 0.dp) {
-        Text(text, color = Color.White, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 12.sp)
+        Text(
+            text,
+            color = Color.White,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            fontSize = 12.sp
+        )
     }
 }
 
@@ -412,28 +434,107 @@ private fun StatPill(icon: ImageVector, value: String, label: String, tint: Colo
     }
 }
 
+/**
+ * Feature card with soft icon accent, centered 2-line title, and press feedback.
+ * Uses scale animation + no Indication (no deprecated ripple).
+ */
+/**
+ * Feature card with soft icon accent, centered title, and press feedback.
+ * Single-word titles stay on one line (ellipsis); multi-word titles may wrap to two lines.
+ */
+/**
+ * Feature card with soft icon accent, press feedback, and smart title sizing.
+ * - Single-word titles: auto-fit to ONE line (no ellipsis, no wrap).
+ * - Multi-word titles: up to TWO lines, neat center alignment.
+ */
 @Composable
-private fun FeatureCard(icon: ImageVector, title: String, onClick: () -> Unit) {
+private fun FeatureCard(
+    icon: ImageVector,
+    title: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(targetValue = if (pressed) 0.98f else 1f, label = "card-scale")
+
+    val isSingleWord = !title.contains(' ')
+    // Start a little larger, we’ll shrink only if needed
+    var fontSize by remember(title) { mutableStateOf(if (isSingleWord) 14.sp else 13.sp) }
+    val minFont = if (isSingleWord) 11.sp else 12.sp
+
     Card(
-        elevation = 6.dp,
+        elevation = 4.dp,
+        shape = RoundedCornerShape(18.dp),
         backgroundColor = Color.White,
         modifier = Modifier
-            .height(118.dp)
-            .clickable { onClick() }
+            .height(108.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick
+            )
     ) {
         Column(
-            Modifier.fillMaxSize(),
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(icon, null, tint = Color(0xFF4C6FFF), modifier = Modifier.size(28.dp))
+            // Icon with soft colored circle
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(tint.copy(alpha = 0.12f), shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+            }
+
             Spacer(Modifier.height(8.dp))
-            Text(title, fontSize = 14.sp)
+
+            // Title: auto-fit single-word to one line
+            Text(
+                text = title,
+                color = Color(0xFF202124),
+                textAlign = TextAlign.Center,
+                lineHeight = 15.sp,
+                // For single word: 1 line + Clip (no ellipsis) + auto downsize
+                // For multi word: up to 2 lines
+                maxLines = if (isSingleWord) 1 else 2,
+                overflow = if (isSingleWord) TextOverflow.Clip else TextOverflow.Clip,
+                fontSize = fontSize,
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .fillMaxWidth(),
+                onTextLayout = { layout ->
+                    if (isSingleWord && layout.hasVisualOverflow && fontSize > minFont) {
+                        fontSize = TextUnit(fontSize.value - 1f, fontSize.type)
+                    }
+                }
+            )
         }
     }
 }
 
-/* ---------- Trend sparklines ---------- */
+/** Per-index accent color so cards look less uniform. */
+private fun accentFor(index: Int): Color {
+    val palette = listOf(
+        Color(0xFF4C6FFF), // blue
+        Color(0xFF7C4DFF), // violet
+        Color(0xFF00B894), // green
+        Color(0xFFFF7043), // orange
+        Color(0xFF26C6DA), // cyan
+        Color(0xFFEC407A), // pink
+        Color(0xFF66BB6A), // mint
+        Color(0xFF5C6BC0)  // indigo
+    )
+    return palette[index % palette.size]
+}
+
+/* -------------------- Trend sparklines -------------------- */
 
 @Composable
 private fun TrendMiniCard(
@@ -515,7 +616,7 @@ private fun trimNumber(v: Float): String =
     if (kotlin.math.abs(v - v.toInt()) < 1e-4) v.toInt().toString()
     else String.format(java.util.Locale.US, "%.1f", v)
 
-/* ---------- Reminder ---------- */
+/* -------------------- Reminder -------------------- */
 
 @Composable
 private fun ReminderCard(
@@ -536,14 +637,14 @@ private fun ReminderCard(
             Text(text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CtaButton("Start Exercise", Icons.Filled.PlayArrow, Color(0xFF4C6FFF), onPrimary)
-                CtaButton("Record Weight", Icons.Filled.Accessibility, Color(0xFF00B894), onSecondary)
+                CtaButton(primaryText, Icons.Filled.Dashboard, Color(0xFF4C6FFF), onPrimary)
+                CtaButton(secondaryText, Icons.Filled.Accessibility, Color(0xFF00B894), onSecondary)
             }
         }
     }
 }
 
-/* ---------- Streak & Badge ---------- */
+/* -------------------- Streak & Badge -------------------- */
 
 @Composable
 private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
@@ -606,7 +707,7 @@ private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
     }
 }
 
-/* ---------- Goal rings ---------- */
+/* -------------------- Goal rings -------------------- */
 
 private fun safeRatio(now: Float, goal: Float): Float =
     if (goal <= 0f) 0f else min(1f, max(0f, now / goal))
@@ -622,8 +723,7 @@ private fun GoalRingCard(
     Card(
         elevation = 3.dp,
         backgroundColor = Color.White,
-        modifier = modifier
-            .height(112.dp)
+        modifier = modifier.height(112.dp)
     ) {
         Column(
             Modifier
@@ -634,7 +734,13 @@ private fun GoalRingCard(
             RingProgress(progress = ratio, size = 46.dp, strokeWidth = 6.dp, tint = tint)
             Spacer(Modifier.height(6.dp))
             Text(label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text(valueLabel, color = Color.Gray, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                valueLabel,
+                color = Color.Gray,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -660,7 +766,7 @@ private fun RingProgress(progress: Float, size: Dp, strokeWidth: Dp, tint: Color
     }
 }
 
-/* ---------- Health tip ---------- */
+/* -------------------- Health tip -------------------- */
 
 @Composable
 private fun HealthTipCard(tip: String, actionText: String, onClick: () -> Unit) {
@@ -683,13 +789,18 @@ private fun HealthTipCard(tip: String, actionText: String, onClick: () -> Unit) 
                 Text(tip, color = Color.Gray, fontSize = 12.sp)
             }
             Spacer(Modifier.width(8.dp))
-            Text(actionText, color = Color(0xFF4C6FFF), fontWeight = FontWeight.Medium, fontSize = 13.sp)
+            Text(
+                actionText,
+                color = Color(0xFF4C6FFF),
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp
+            )
         }
     }
     Spacer(Modifier.height(8.dp))
 }
 
-/* ---------- Recent activity ---------- */
+/* -------------------- Recent activity -------------------- */
 
 data class RecentItem(val icon: ImageVector, val title: String, val time: String)
 
@@ -746,7 +857,7 @@ private fun RecentActivitySection(
     }
 }
 
-/* ---------- Permission banner ---------- */
+/* -------------------- Permission banner -------------------- */
 
 @Composable
 private fun PermissionBanner(
@@ -779,11 +890,8 @@ private fun PermissionBanner(
     }
 }
 
-/* ---------- Helper for WoW label ---------- */
+/* -------------------- WoW label helper -------------------- */
 
-/**
- * Computes week-over-week change as text and color.
- */
 private fun wowLabel(current: Float, prev: Float): Pair<String, Color> {
     if (prev <= 0f) return "" to Color.Gray
     val change = ((current - prev) / prev) * 100f
@@ -793,7 +901,7 @@ private fun wowLabel(current: Float, prev: Float): Pair<String, Color> {
     return text to color
 }
 
-/* ---------- Nav entries for the grid ---------- */
+/* -------------------- Grid model -------------------- */
 
 private data class NavEntry(val screen: Screen, val title: String, val icon: ImageVector)
 

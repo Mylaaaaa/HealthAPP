@@ -1,51 +1,36 @@
-@file:OptIn(ExperimentalMaterialApi::class)
-
 package com.example.myhealth.presentation.screen.exercisesession
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.*
-import androidx.compose.material.DismissDirection
-import androidx.compose.material.DismissValue
-import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.ModalBottomSheetLayout
-import androidx.compose.material.ModalBottomSheetValue
-import androidx.compose.material.SwipeToDismiss
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.FitnessCenter
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlin.math.roundToInt
-
-// ---- Your domain model ----
-// Adjust field names here if your ExerciseSession is slightly different.
-data class ExerciseSession(
-    val id: String,
-    val type: String,
-    val minutes: Int,
-    val calories: Int,
-    val intensity: String,
-    val startTime: String
-)
+import com.example.myhealth.data.ExerciseSession
+import com.example.myhealth.presentation.component.ExerciseSessionRow
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
+import java.time.LocalDate
 
 /**
- * Dashboard-styled Workout page (Material 2),
- * drop-in for your existing WorkoutPage body.
+ * Workout dashboard (Material 2)
  *
- * Keep your WorkoutPage(...) signature unchanged in ExerciseSessionScreen.kt,
- * and call this inside it.
+ * Rules:
+ * - Big number in the ring = today's logged sessions (planned + extras)
+ * - Progress bar           = completed planned tasks / planned tasks (planned-only progress)
+ * - The list shows only today's sessions
+ *
+ * NOTE: start/end are ZonedDateTime in your model and are passed as ZonedDateTime
+ *       to ExerciseSessionRow to match its signature. No Long/epoch conversion here.
  */
 @Composable
 fun WorkoutDashboardM2(
@@ -58,150 +43,149 @@ fun WorkoutDashboardM2(
     onDetailsClick: (String) -> Unit,
     onDeleteClick: (String) -> Unit
 ) {
-    // Local UI state (goal can come from ViewModel later)
-    var dailyGoal by remember { mutableStateOf(45) }
+    val context = LocalContext.current
+    val today = remember { LocalDate.now() }
 
-    val done = sessionsList.sumOf { it.minutes }
-    val progress = (done / dailyGoal.toFloat()).coerceIn(0f, 1f)
+    // 1) Read planned tasks for today (written by Plan screen)
+    val tasksStore = remember { PlanTasksStore(context.applicationContext) }
+    val todayTasks by remember { mutableStateOf(tasksStore.getTasks(today)) }
+    val plannedCount = todayTasks.size
 
-    // Add-session sheet control (uses Material 2 BottomSheet)
-    val sheetState = rememberModalBottomSheetState(
-        initialValue = ModalBottomSheetValue.Hidden,
-        skipHalfExpanded = true
-    )
-    var showSheet by remember { mutableStateOf(false) }
+    // 2) How many planned are completed:
+    //    If today's Plan title is marked done in PlanProgressStore -> all planned considered done.
+    val progressStore = remember { PlanProgressStore(context.applicationContext) }
+    val todayPlanTitle = remember { tasksStore.getDayTitle(today) }
+    val completedPlannedCount = remember(plannedCount, todayPlanTitle) {
+        if (plannedCount == 0) 0
+        else if (todayPlanTitle != null && progressStore.isDone(today, todayPlanTitle)) plannedCount
+        else 0
+    }
 
-    ModalBottomSheetLayout(
-        sheetState = sheetState,
-        sheetElevation = 8.dp,
-        sheetContent = {
-            AddSessionSheetM2(
-                onAdd = { minutes, type, intensity ->
-                    // Delegate to your add flow
-                    onInsertClick()
-                    // After the insert flow returns (e.g. via ViewModel), the list will refresh upstream
-                    showSheet = false
-                },
-                onClose = { showSheet = false }
-            )
-        }
-    ) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("Workout · Today", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    actions = {
-                        IconButton(onClick = { /* open settings for goals, etc. */ }) {
-                            Icon(Icons.Outlined.Settings, contentDescription = null)
-                        }
-                        IconButton(onClick = { /* overflow */ }) {
-                            Icon(Icons.Outlined.MoreVert, contentDescription = null)
-                        }
-                    }
-                )
-            },
-            floatingActionButton = {
-                FloatingActionButton(onClick = { showSheet = true }) {
-                    Icon(Icons.Outlined.FitnessCenter, contentDescription = null)
-                }
-            }
-        ) { padding ->
-            Column(
-                modifier = modifier
+    // 3) Today's sessions (planned + extras). Keep ZonedDateTime end-to-end.
+    val todaySessions = remember(sessionsList) { sessionsList.filter { it.isSameDate(today) } }
+    val loggedCount = todaySessions.size
+
+    // 4) Planned progress (planned-only)
+    val progress = if (plannedCount == 0) 0f else (completedPlannedCount / plannedCount.toFloat())
+
+    Column(modifier.fillMaxSize()) {
+
+        // --- HERO: big number = loggedCount; progress = completed/planned ---
+        HeroSectionM2(
+            bigNumber = loggedCount,
+            planned = plannedCount,
+            completed = completedPlannedCount,
+            progress = progress
+        )
+
+        // --- Background read permission banner (unchanged) ---
+        BackgroundReadRequest(
+            backgroundReadAvailable = backgroundReadAvailable,
+            backgroundReadGranted = backgroundReadGranted,
+            onRequestBgRead = onRequestBgRead
+        )
+
+        // --- Quick actions (extras only; do not affect progress) ---
+        QuickActionsRowM2(onQuickAdd = onInsertClick)
+
+        // --- Recommendation card (unchanged) ---
+        RecommendationCardM2(onAdd = onInsertClick)
+
+        // --- Title ---
+        Text(
+            if (plannedCount > 0) "Today's sessions ($plannedCount planned)" else "Today's sessions",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.subtitle1
+        )
+
+        // --- List: only today's sessions (ZonedDateTime → ZonedDateTime) ---
+        if (todaySessions.isEmpty()) {
+            EmptyState()
+        } else {
+            LazyColumn(
+                modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(top = 4.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
-                // HERO / summary
-                HeroSectionM2(
-                    progress = progress,
-                    done = done,
-                    goal = dailyGoal,
-                    calories = sessionsList.sumOf { it.calories },
-                    streak = 4 // demo value; wire to your real streak later
-                )
-
-                // Background read permissions hint (optional)
-                if (backgroundReadAvailable && !backgroundReadGranted) {
-                    PermissionBannerM2(onRequest = onRequestBgRead)
-                }
-
-                // Quick actions (templates)
-                QuickActionsRowM2(
-                    onQuickAdd = { template ->
-                        // If you have a specific insert-with-template flow, call it here.
-                        // Otherwise, just open the sheet for manual add:
-                        showSheet = true
-                    }
-                )
-
-                // Recommendation card
-                RecommendationCardM2(onAdd = {
-                    // One-tap recommended add. Plug into your insert logic:
-                    onInsertClick()
-                })
-
-                // List or empty state
-                if (sessionsList.isEmpty()) {
-                    EmptyStateM2(
-                        onQuickStart = { onInsertClick() },
-                        onBrowseTemplates = { showSheet = true }
+                items(todaySessions, key = { it.id }) { s ->
+                    val appInfo = s.sourceAppInfo
+                    ExerciseSessionRow(
+                        start = s.startTime,    // ZonedDateTime expected by your row
+                        end = s.endTime,        // ZonedDateTime expected by your row
+                        uid = s.id,
+                        name = s.title ?: "No title",
+                        sourceAppName = appInfo?.appLabel ?: "Unknown app",
+                        sourceAppIcon = appInfo?.icon,
+                        onDeleteClick = { uid -> onDeleteClick(uid) },
+                        onDetailsClick = { uid -> onDetailsClick(uid) }
                     )
-                } else {
-                    SessionListM2(
-                        sessions = sessionsList,
-                        onDelete = onDeleteClick,
-                        onEdit = onDetailsClick
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    Divider(modifier = Modifier.alpha(0.1f))
+                    Spacer(Modifier.height(8.dp))
                 }
             }
-        }
-
-        // Presentation of sheet
-        LaunchedEffect(showSheet) {
-            if (showSheet) sheetState.show() else sheetState.hide()
         }
     }
 }
 
-// ---- UI Parts (Material 2) ----
+/* ====================== Sub-components (styling unchanged) ====================== */
 
 @Composable
 private fun HeroSectionM2(
-    progress: Float,
-    done: Int,
-    goal: Int,
-    calories: Int,
-    streak: Int
+    bigNumber: Int,   // today's logged sessions (planned + extras)
+    planned: Int,     // number of planned tasks today
+    completed: Int,   // number of completed planned tasks
+    progress: Float   // completed / planned
 ) {
-    Card(Modifier.fillMaxWidth().padding(16.dp), elevation = 2.dp) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 10.dp),
+        elevation = 2.dp
+    ) {
         Row(
-            Modifier.fillMaxWidth().padding(16.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Circular progress + number
-            Box(Modifier.size(120.dp), contentAlignment = Alignment.Center) {
+            // Circular big number
+            Box(Modifier.size(110.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
                     progress = 1f,
                     strokeWidth = 10.dp,
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.08f)
                 )
-                CircularProgressIndicator(progress = progress, strokeWidth = 10.dp)
+                CircularProgressIndicator(
+                    progress = progress.coerceIn(0f, 1f),
+                    strokeWidth = 10.dp
+                )
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$done/$goal", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("min", style = MaterialTheme.typography.caption)
+                    Text("$bigNumber", style = MaterialTheme.typography.h6)
+                    Text("sessions", style = MaterialTheme.typography.caption)
                 }
             }
+
             Spacer(Modifier.width(16.dp))
+
             Column(Modifier.weight(1f)) {
-                MetricRowM2("Streak", "$streak days")
-                MetricRowM2("Calories", "$calories kcal")
+                MetricRowM2(label = "Planned", value = "$planned")
+                MetricRowM2(label = "Completed", value = "$completed")
                 Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = progress,
-                    modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)
+                    progress = progress.coerceIn(0f, 1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(0.95f)
                 )
                 Text(
-                    text = "${(progress * 100).roundToInt()}% of daily goal",
+                    text = when (planned) {
+                        0 -> "No plan today"
+                        else -> "${(progress * 100).toInt()}% of today's plan"
+                    },
                     style = MaterialTheme.typography.caption,
                     modifier = Modifier.padding(top = 6.dp)
                 )
@@ -210,69 +194,46 @@ private fun HeroSectionM2(
     }
 }
 
-@Composable private fun MetricRowM2(label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-        Text(label, style = MaterialTheme.typography.caption, modifier = Modifier.width(72.dp))
-        Text(value, style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+@Composable
+private fun MetricRowM2(label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.width(82.dp), style = MaterialTheme.typography.caption)
+        Text(value, style = MaterialTheme.typography.subtitle1)
     }
 }
 
 @Composable
-private fun PermissionBannerM2(onRequest: () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        backgroundColor = MaterialTheme.colors.secondary.copy(alpha = 0.08f),
-        elevation = 0.dp
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Background read not granted", style = MaterialTheme.typography.subtitle2)
-                Text("Allow background read to show auto-logged sessions.", style = MaterialTheme.typography.caption)
-            }
-            OutlinedButton(onClick = onRequest) { Text("Allow") }
-        }
-    }
-}
-
-@Composable
-private fun QuickActionsRowM2(onQuickAdd: (Template) -> Unit) {
+private fun QuickActionsRowM2(onQuickAdd: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ActionChipM2("Walk 30m") { onQuickAdd(Template.Walk30) }
-        ActionChipM2("Run 25m") { onQuickAdd(Template.Run25) }
-        ActionChipM2("Strength 35m") { onQuickAdd(Template.Strength35) }
-        ActionChipM2("Yoga 20m") { onQuickAdd(Template.Yoga20) }
-    }
-}
-
-@Composable
-private fun ActionChipM2(text: String, onClick: () -> Unit) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        border = ButtonDefaults.outlinedBorder,
-        elevation = 0.dp,
-        onClick = onClick
-    ) {
-        Text(text, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.body2)
+        OutlinedButton(onClick = onQuickAdd) { Text("Add walk 30m") }
+        OutlinedButton(onClick = onQuickAdd) { Text("Add run 25m") }
+        OutlinedButton(onClick = onQuickAdd) { Text("Add strength 35m") }
     }
 }
 
 @Composable
 private fun RecommendationCardM2(onAdd: () -> Unit) {
     Card(
-        Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp),
         elevation = 0.dp,
         backgroundColor = MaterialTheme.colors.primary.copy(alpha = 0.08f)
     ) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(Modifier.weight(1f)) {
                 Text("Based on last week", style = MaterialTheme.typography.caption)
-                Text("Recommended: Easy Walk · 30 minutes", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+                Text("Recommended: Easy Walk · 30 minutes", style = MaterialTheme.typography.subtitle1)
                 Text("Gentle cardio to maintain your streak.", style = MaterialTheme.typography.body2)
             }
             Button(onClick = onAdd) { Text("Add") }
@@ -281,127 +242,68 @@ private fun RecommendationCardM2(onAdd: () -> Unit) {
 }
 
 @Composable
-private fun SessionListM2(
-    sessions: List<ExerciseSession>,
-    onDelete: (String) -> Unit,
-    onEdit: (String) -> Unit
+private fun BackgroundReadRequest(
+    backgroundReadAvailable: Boolean,
+    backgroundReadGranted: Boolean,
+    onRequestBgRead: () -> Unit
 ) {
-    LazyColumn(contentPadding = PaddingValues(bottom = 88.dp)) {
-        item {
-            Surface(elevation = 1.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text("Today", style = MaterialTheme.typography.subtitle1)
-                }
-            }
-        }
-        items(items = sessions, key = { it.id }) { s ->
-            val dismissState = rememberDismissState(
-                confirmStateChange = { value ->
-                    if (value == DismissValue.DismissedToEnd || value == DismissValue.DismissedToStart) {
-                        onDelete(s.id); true
-                    } else false
-                }
-            )
-            SwipeToDismiss(
-                state = dismissState,
-                directions = setOf(DismissDirection.StartToEnd, DismissDirection.EndToStart),
-                background = { DismissBackgroundM2(dismissState) },
-                dismissContent = { SessionCardM2(s, onEdit = { onEdit(s.id) }) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun DismissBackgroundM2(state: DismissState) {
-    val bg = if (state.targetValue != DismissValue.Default)
-        MaterialTheme.colors.error.copy(alpha = 0.15f)
-    else
-        MaterialTheme.colors.onSurface.copy(alpha = 0.04f)
-
-    Box(
-        Modifier.fillMaxWidth().height(84.dp).background(bg).padding(horizontal = 20.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(Icons.Outlined.Delete, contentDescription = null)
-    }
-}
-
-@Composable
-private fun SessionCardM2(session: ExerciseSession, onEdit: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), elevation = 1.dp) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("${session.type} · ${session.minutes} min", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-                Text("${session.startTime}  ·  ${session.calories} kcal  ·  ${session.intensity}", style = MaterialTheme.typography.caption)
-            }
-            IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, contentDescription = null) }
-        }
-    }
-}
-
-@Composable
-private fun EmptyStateM2(
-    onQuickStart: () -> Unit,
-    onBrowseTemplates: () -> Unit
-) {
-    Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("No sessions yet", style = MaterialTheme.typography.h6, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text("Quick start with a 20-minute walk or browse templates.", style = MaterialTheme.typography.body2)
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onQuickStart) { Text("Quick Start: Walk 20m") }
-        TextButton(onClick = onBrowseTemplates) { Text("Browse templates") }
-    }
-}
-
-// ---- Bottom sheet (M2) ----
-
-@Composable
-private fun AddSessionSheetM2(
-    onAdd: (minutes: Int, type: String, intensity: String) -> Unit,
-    onClose: () -> Unit
-) {
-    var minutes by remember { mutableStateOf(30) }
-    var type by remember { mutableStateOf("Walk") }
-    var intensity by remember { mutableStateOf("Moderate") }
-
-    Column(Modifier.fillMaxWidth().padding(16.dp)) {
-        Text("New session", style = MaterialTheme.typography.h6)
-        Spacer(Modifier.height(12.dp))
-
-        // Type row
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Walk", "Run", "Strength", "Yoga").forEach { t ->
-                OutlinedButton(onClick = { type = t }) { Text(t) }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        // Intensity row
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Easy", "Moderate", "Hard").forEach { i ->
-                OutlinedButton(onClick = { intensity = i }) { Text(i) }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Minutes", modifier = Modifier.width(80.dp))
-            OutlinedButton(onClick = { minutes = (minutes - 5).coerceAtLeast(5) }) { Text("-") }
-            Text("  $minutes  ", fontSize = 18.sp)
-            OutlinedButton(onClick = { minutes += 5 }) { Text("+") }
-        }
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = { onAdd(minutes, type, intensity) },
+    if (!backgroundReadAvailable) return
+    AnimatedVisibility(visible = !backgroundReadGranted) {
+        Card(
+            backgroundColor = MaterialTheme.colors.secondary.copy(alpha = 0.08f),
+            elevation = 0.dp,
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Add session") }
-        TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.NotificationsActive, contentDescription = null)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Allow background read", style = MaterialTheme.typography.subtitle2)
+                    Text(
+                        "Enable background reads to keep your sessions list up-to-date.",
+                        style = MaterialTheme.typography.body2
+                    )
+                }
+                OutlinedButton(onClick = onRequestBgRead) { Text("Grant") }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
     }
 }
 
-// ---- Simple template enum (optional) ----
-private enum class Template { Walk30, Run25, Strength35, Yoga20 }
+@Composable
+private fun EmptyState() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colors.onSurface.copy(alpha = 0.03f))
+            .padding(vertical = 24.dp, horizontal = 16.dp)
+    ) {
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Use AutoMirrored icon to avoid the deprecation warning.
+            Icon(Icons.AutoMirrored.Filled.DirectionsRun, contentDescription = null, tint = Color.Gray)
+            Spacer(Modifier.height(8.dp))
+            Text("No sessions yet.", color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
+            Text(
+                "Tap the button above to insert a sample workout.",
+                style = MaterialTheme.typography.body2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
+
+/* ====================== Helpers ====================== */
+
+/** True if the session belongs to the given calendar date (local timezone). */
+private fun ExerciseSession.isSameDate(date: LocalDate): Boolean {
+    return try {
+        // startTime is ZonedDateTime in your model
+        this.startTime.toLocalDate() == date
+    } catch (_: Throwable) {
+        false
+    }
+}

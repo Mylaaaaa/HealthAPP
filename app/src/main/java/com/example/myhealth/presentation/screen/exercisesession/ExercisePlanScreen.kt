@@ -1,6 +1,6 @@
 // app/src/main/java/com/example/myhealth/presentation/screen/exercisesession/ExercisePlanScreen.kt
 package com.example.myhealth.presentation.screen.exercisesession
-
+import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
 
 import android.content.Context
 import android.widget.Toast
@@ -456,6 +456,29 @@ private fun PlanOverview(
 
         // Generate and render weekly plan (cards are clickable)
         val plan = remember(profile) { generateWeeklyPlan(profile, computeSchedule(profile)) }
+        val ctx = LocalContext.current
+        LaunchedEffect(plan) {
+            // Find today's plan card
+            val today = LocalDate.now()
+            val today3 = today.dayOfWeek.name.take(3).uppercase()
+            val todayDay = plan.days.firstOrNull { it.title.startsWith(today3) }
+
+            // Convert card items -> today's planned tasks
+            val tasks = todayDay?.items?.mapIndexed { idx, item ->
+                PlanTasksStore.PlanTask(
+                    taskId = "d${today}-$idx", // stable within the day
+                    title = item
+                )
+            } ?: emptyList()
+
+            // Persist tasks and the day title for Workout to read
+            PlanTasksStore(ctx.applicationContext).setTasks(
+                date = today,
+                dayTitle = todayDay?.title,   // e.g. "MON – fat-loss focus"
+                tasks = tasks
+            )
+        }
+
         WeeklyPlanPretty(
             plan = plan,
             isDoneToday = isDoneToday, // NEW

@@ -90,7 +90,9 @@ fun HealthConnectNavigation(
                     healthConnectManager = healthConnectManager
                 )
             )
-
+            LaunchedEffect(Unit) {
+                viewModel.initialLoad()
+            }
             val permissionsGranted by viewModel.permissionsGranted
             val sessionsList by viewModel.sessionsList
             val permissions = viewModel.permissions

@@ -1,5 +1,6 @@
 // app/src/main/java/com/example/myhealth/presentation/screen/exercisesession/ExercisePlanScreen.kt
 package com.example.myhealth.presentation.screen.exercisesession
+
 import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
 
 import android.content.Context
@@ -47,9 +48,14 @@ fun ExercisePlanScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { ExercisePrefs(context) }
-    // NEW: tiny store to persist “done today” for each plan-day
+
+    // PlanTasksStore is the single source of truth for today's plan & completion
+    val tasksStore = remember { PlanTasksStore(context.applicationContext) }
+
+    // Tiny stores you already have (keep them if other screens rely on them)
     val progressStore = remember { PlanProgressStore(context.applicationContext) }
     val activeStore = remember { ActiveDayProgressStore(context.applicationContext) }
+
     // Load persisted profile or a default
     val persisted = prefs.loadProfileOrNull()
     var profile by rememberSaveable(stateSaver = ProfileSaver) { mutableStateOf(persisted ?: UserProfile()) }
@@ -60,30 +66,48 @@ fun ExercisePlanScreen(
     val sheetState = rememberModalBottomSheetState(initialValue = Hidden, skipHalfExpanded = true)
     var sheetDay by remember { mutableStateOf<PlanDay?>(null) }
 
+    // Helpers to sync completion into PlanTasksStore for TODAY
+    val markAllTodayCompleted: (Boolean) -> Unit = remember {
+        { completed ->
+            val today = LocalDate.now()
+            val current = tasksStore.getTasks(today)
+            if (current.isNotEmpty()) {
+                val updated = current.map { it.copy(completed = completed) }
+                tasksStore.setTasks(today, tasksStore.getDayTitle(today), updated)
+            }
+        }
+    }
+
     ModalBottomSheetLayout(
         sheetState = sheetState,
         sheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         sheetContent = {
             DayPlanSheet(
                 day = sheetDay,
+                // Still show your "done today" hint (kept for UI consistency)
                 isDoneToday = sheetDay?.let { progressStore.isDone(LocalDate.now(), it.title) } ?: false,
                 onStart = { day ->
-                    // if user chooses "Redo", drop today's Done flag first
+                    // If user chooses "Redo", clear today's completed flags and the legacy flags
                     if (progressStore.isDone(LocalDate.now(), day.title)) {
                         progressStore.clear(LocalDate.now(), day.title)
                         activeStore.clear(LocalDate.now(), day.title)
                     }
+                    // Also clear PlanTasksStore's completed flags so progress on Workout restarts
+                    markAllTodayCompleted(false)
+
                     onStartDay(day)
                     scope.launch { sheetState.hide() }
                 },
                 onQuickDone = { day ->
-                    // Quick mark puts Done back
+                    // 1) Keep your existing “done today” flag
                     progressStore.markDone(LocalDate.now(), day.title)
+                    // 2) Persist completion into PlanTasksStore — this drives Workout progress
+                    markAllTodayCompleted(true)
+
                     Toast.makeText(context, "Marked done: ${day.title}", Toast.LENGTH_SHORT).show()
                     scope.launch { sheetState.hide() }
                 }
             )
-
         }
     ) {
         if (isSaved) {
@@ -100,7 +124,7 @@ fun ExercisePlanScreen(
                     sheetDay = day
                     scope.launch { sheetState.show() }
                 },
-                // NEW: tell list which days are done today (to show Done chip)
+                // Used only to render a "Done" chip on the weekly cards
                 isDoneToday = { day -> progressStore.isDone(LocalDate.now(), day.title) }
             )
         } else {
@@ -236,6 +260,7 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
 }
 
 /* ----------------------------- WIZARD STEPS ------------------------------ */
+// (unchanged UI helpers below…)
 
 @Composable private fun GoalStep(selected: Goal, onSelect: (Goal) -> Unit) {
     StepCard("Your primary goal") {
@@ -457,13 +482,13 @@ private fun PlanOverview(
         // Generate and render weekly plan (cards are clickable)
         val plan = remember(profile) { generateWeeklyPlan(profile, computeSchedule(profile)) }
         val ctx = LocalContext.current
+
+        // Persist TODAY's tasks for Workout to read – KEEP synthetic tasks
         LaunchedEffect(plan) {
-            // Find today's plan card
             val today = LocalDate.now()
             val today3 = today.dayOfWeek.name.take(3).uppercase()
             val todayDay = plan.days.firstOrNull { it.title.startsWith(today3) }
 
-            // Convert card items -> today's planned tasks
             val tasks = todayDay?.items?.mapIndexed { idx, item ->
                 PlanTasksStore.PlanTask(
                     taskId = "d${today}-$idx", // stable within the day
@@ -471,11 +496,10 @@ private fun PlanOverview(
                 )
             } ?: emptyList()
 
-            // Persist tasks and the day title for Workout to read
-            PlanTasksStore(ctx.applicationContext).setTasks(
+            PlanTasksStore(ctx.applicationContext).setTasksKeepingSynthetic(
                 date = today,
-                dayTitle = todayDay?.title,   // e.g. "MON – fat-loss focus"
-                tasks = tasks
+                dayTitle = todayDay?.title,
+                newTasks = tasks
             )
         }
 
@@ -493,7 +517,7 @@ private fun PlanOverview(
 }
 
 /* ---------- Pretty components ---------- */
-
+// (UI-only helpers unchanged…)
 @Composable private fun SectionTitle(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colors.primary)
@@ -521,7 +545,6 @@ private fun PlanOverview(
     }
 }
 @Composable private fun FlowChips(labels: List<String>) {
-    // Simple wrap without extra dependencies
     Column {
         var line = mutableListOf<String>()
         labels.forEachIndexed { i, s ->
@@ -544,7 +567,7 @@ private fun PlanOverview(
 }
 @Composable private fun WeeklyPlanPretty(
     plan: ExercisePlan,
-    isDoneToday: (PlanDay) -> Boolean, // NEW
+    isDoneToday: (PlanDay) -> Boolean,
     onDayClick: (PlanDay) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -562,7 +585,7 @@ private fun PlanOverview(
                         Spacer(Modifier.height(6.dp))
                         day.items.forEach { Text("• $it", style = MaterialTheme.typography.body2) }
                     }
-                    if (isDoneToday(day)) DoneChip() // NEW
+                    if (isDoneToday(day)) DoneChip()
                 }
             }
         }
@@ -593,7 +616,7 @@ private fun PlanOverview(
 }
 
 /* ----------------------------- PLAN GENERATION --------------------------- */
-
+// (unchanged generation helpers…)
 data class PlanDay(val title: String, val items: List<String>)
 data class ExercisePlan(val days: List<PlanDay>)
 
@@ -799,7 +822,6 @@ private fun DayPlanSheet(
             }
         }
 
-        // -- These are the two steps: When today's tasks are completed, provide a prompt and change the button text to "Redo guided" -- //
         if (isDoneToday) {
             Text(
                 "Completed today — tap Redo to start a new run.",
@@ -809,14 +831,11 @@ private fun DayPlanSheet(
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Main button: If today's tasks have been completed, the text will display "Redo guided"; the logic remains as onStart(day)
             Button(modifier = Modifier.weight(1f), onClick = { onStart(day) }) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text(if (isDoneToday) "Redo guided" else "Start guided")
             }
-
-            // Quick marking completion: If completed today, disable and change the text description
             OutlinedButton(
                 modifier = Modifier.weight(1f),
                 onClick = { onQuickDone(day) },
@@ -829,7 +848,6 @@ private fun DayPlanSheet(
         }
     }
 }
-
 
 /* ------------------------------ Small UI bits ---------------------------- */
 

@@ -505,23 +505,31 @@ private fun PlanOverview(
         val ctx = LocalContext.current
 
         // Persist TODAY's tasks for Workout to read – KEEP synthetic tasks
+        // CHANGED: seed only when there is NO existing planned (non-synthetic) task today.
         LaunchedEffect(plan) {
             val today = LocalDate.now()
-            val today3 = today.dayOfWeek.name.take(3).uppercase()
-            val todayDay = plan.days.firstOrNull { it.title.startsWith(today3) }
+            val store = PlanTasksStore(ctx.applicationContext)
 
-            val tasks = todayDay?.items?.mapIndexed { idx, item ->
-                PlanTasksStore.PlanTask(
-                    taskId = "d${today}-$idx", // stable within the day
-                    title = item
+            val existing = store.getTasks(today)
+            val hasPlanned = existing.any { it.type != "synthetic" }
+
+            if (!hasPlanned) {
+                val today3 = today.dayOfWeek.name.take(3).uppercase()
+                val todayDay = plan.days.firstOrNull { it.title.startsWith(today3) }
+
+                val tasks = todayDay?.items?.mapIndexed { idx, item ->
+                    PlanTasksStore.PlanTask(
+                        taskId = "d${today}-$idx", // stable within the day
+                        title = item
+                    )
+                } ?: emptyList()
+
+                store.setTasksKeepingSynthetic(
+                    date = today,
+                    dayTitle = todayDay?.title,
+                    newTasks = tasks
                 )
-            } ?: emptyList()
-
-            PlanTasksStore(ctx.applicationContext).setTasksKeepingSynthetic(
-                date = today,
-                dayTitle = todayDay?.title,
-                newTasks = tasks
-            )
+            }
         }
 
         WeeklyPlanPretty(
@@ -805,6 +813,7 @@ private fun titleForGoal(goal: Goal) = when (goal) {
 /* --------------------------- BottomSheet content ------------------------- */
 
 // === Replace the whole DayPlanSheet with this version (kept your structure) ===
+// ADDED: per-item toggle with confirm dialog; synthetic list with delete.
 @Composable
 private fun DayPlanSheet(
     day: PlanDay?,
@@ -823,6 +832,16 @@ private fun DayPlanSheet(
         return
     }
 
+    // Local mirror of today's tasks + listener so Plan <-> Workout stay in sync.
+    var tasks by remember { mutableStateOf(store.getTasks(today)) }
+    DisposableEffect(today) {
+        val l = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            tasks = store.getTasks(today)
+        }
+        store.addOnChangeListener(l)
+        onDispose { store.removeOnChangeListener(l) }
+    }
+
     /** Ensure today's template exists (and keep synthetic quick-add tasks). */
     fun ensureTodayTemplate() {
         val current = store.getTasks(today)
@@ -838,6 +857,7 @@ private fun DayPlanSheet(
                 dayTitle = day.title,
                 newTasks = template
             )
+            tasks = store.getTasks(today)
         }
     }
 
@@ -850,8 +870,14 @@ private fun DayPlanSheet(
                 dayTitle = store.getDayTitle(today),
                 tasks = list.map { it.copy(completed = value) }
             )
+            tasks = store.getTasks(today)
         }
     }
+
+    // Confirm dialog states for per-item toggle & delete
+    var pendingToggle by remember { mutableStateOf<PlanTasksStore.PlanTask?>(null) }
+    var toggleToCompleted by remember { mutableStateOf(true) }
+    var pendingDelete by remember { mutableStateOf<PlanTasksStore.PlanTask?>(null) }
 
     Column(
         Modifier.fillMaxWidth().padding(16.dp),
@@ -871,13 +897,34 @@ private fun DayPlanSheet(
             )
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // ---------- Per-item operations (planned / non-synthetic) ----------
+        ensureTodayTemplate()
+        tasks.filter { it.type != "synthetic" }.forEach { t ->
+            Card(elevation = 0.dp, backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.03f)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t.title, style = MaterialTheme.typography.subtitle2)
+                        t.target?.let { Text("$it min", style = MaterialTheme.typography.caption, color = Color.Gray) }
+                    }
+                    if (!t.completed) {
+                        OutlinedButton(onClick = { pendingToggle = t; toggleToCompleted = true }) { Text("Mark done") }
+                    } else {
+                        OutlinedButton(onClick = { pendingToggle = t; toggleToCompleted = false }) { Text("Unmark") }
+                    }
+                }
+            }
+        }
 
+        // Actions row: Guided & Quick done (keep your originals)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 modifier = Modifier.weight(1f),
                 onClick = {
                     ensureTodayTemplate()
-                    setAllCompleted(false)
+                    setAllCompleted(false) // guided run starts fresh
                     onStart(day)
                 }
             ) {
@@ -900,6 +947,65 @@ private fun DayPlanSheet(
                 Text(if (isDoneToday) "Already done today" else "Mark done quickly")
             }
         }
+
+        // ---------- Synthetic (recommended) with delete ----------
+        val synthetic = tasks.filter { it.type == "synthetic" }
+        if (synthetic.isNotEmpty()) {
+            Text("Recommended today", style = MaterialTheme.typography.subtitle2)
+            synthetic.forEach { t ->
+                Card(elevation = 0.dp, backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.03f)) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) { Text(t.title, style = MaterialTheme.typography.subtitle2) }
+                        if (!t.completed) {
+                            OutlinedButton(onClick = { pendingToggle = t; toggleToCompleted = true }) { Text("Mark done") }
+                        } else {
+                            OutlinedButton(onClick = { pendingToggle = t; toggleToCompleted = false }) { Text("Unmark") }
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        IconButton(onClick = { pendingDelete = t }) { Icon(Icons.Default.Delete, contentDescription = "Remove") }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------- Confirm dialogs ----------
+    pendingToggle?.let { t ->
+        val willComplete = toggleToCompleted
+        AlertDialog(
+            onDismissRequest = { pendingToggle = null },
+            title = { Text(if (willComplete) "Mark as completed?" else "Mark as not completed?") },
+            text  = { Text("Item: \"${t.title}\"") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val listNow = store.getTasks(today)
+                    val newList = listNow.map { if (it.taskId == t.taskId) it.copy(completed = willComplete) else it }
+                    store.setTasks(date = today, dayTitle = store.getDayTitle(today), tasks = newList)
+                    pendingToggle = null
+                }) { Text("Confirm") }
+            },
+            dismissButton = { TextButton(onClick = { pendingToggle = null }) { Text("Cancel") } }
+        )
+    }
+
+    pendingDelete?.let { t ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Remove recommended task?") },
+            text  = { Text("This will remove \"${t.title}\" from today's plan.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val listNow = store.getTasks(today)
+                    val newList = listNow.filterNot { it.taskId == t.taskId && t.type == "synthetic" }
+                    store.setTasks(date = today, dayTitle = store.getDayTitle(today), tasks = newList)
+                    pendingDelete = null
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } }
+        )
     }
 }
 

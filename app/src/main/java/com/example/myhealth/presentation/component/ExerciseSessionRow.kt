@@ -1,45 +1,36 @@
-/*
- * Copyright 2024 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.example.myhealth.presentation.component
 
 import android.graphics.drawable.Drawable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.health.connect.client.records.ExerciseSessionRecord
-import com.example.myhealth.R
-import com.example.myhealth.presentation.theme.HealthConnectTheme
+import androidx.core.graphics.drawable.toBitmap // <-- 用于把 Drawable 转 Bitmap
+import java.time.Duration
 import java.time.ZonedDateTime
-import java.util.UUID
+import java.time.format.DateTimeFormatter
 
 /**
- * Creates a row to represent an [ExerciseSessionRecord]
+ * Material 2 card-style row for one exercise session.
+ * - Title emphasized
+ * - Second line shows time range + duration
+ * - Third line shows source app (optional icon)
+ * - Whole card navigates to details; trash deletes
+ *
+ * NOTE: sourceAppIcon is Drawable? to match your caller; we convert inside.
  */
 @Composable
 fun ExerciseSessionRow(
@@ -48,51 +39,95 @@ fun ExerciseSessionRow(
     uid: String,
     name: String,
     sourceAppName: String,
-    sourceAppIcon: Drawable?,
-    onDeleteClick: (String) -> Unit = {},
-    onDetailsClick: (String) -> Unit = {}
+    sourceAppIcon: Drawable?,              // <-- 改成 Drawable?
+    onDeleteClick: (String) -> Unit,
+    onDetailsClick: (String) -> Unit,
+    showId: Boolean = false
 ) {
-    Row(
+    val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    val startText = timeFormatter.format(start)
+    val endText = timeFormatter.format(end)
+    val durationMin = Duration.between(start, end).toMinutes().coerceAtLeast(0)
+    val durationText = "$durationMin mins"
+
+    // 将 Drawable? 安全转换为 Painter（若为 null，就不显示图标）
+    val iconPainter = sourceAppIcon?.let {
+        val bmp = it.toBitmap()               // core-ktx 的扩展
+        BitmapPainter(bmp.asImageBitmap())
+    }
+
+    Card(
+        elevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .clickable { onDetailsClick(uid) }
     ) {
-        ExerciseSessionInfoColumn(
-            start = start,
-            end = end,
-            uid = uid,
-            name = name,
-            sourceAppName = sourceAppName,
-            sourceAppIcon = sourceAppIcon,
-            onClick = onDetailsClick
-        )
-        IconButton(
-            onClick = { onDeleteClick(uid) },
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Delete, stringResource(R.string.delete_button))
-        }
-        IconButton(
-            onClick = { onDetailsClick(uid) },
-        ) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.details_button))
-        }
-    }
-}
+            // Leading accent dot
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colors.primary.copy(alpha = 0.85f))
+            )
 
-@Preview
-@Composable
-fun ExerciseSessionRowPreview() {
-    val context = LocalContext.current
-    HealthConnectTheme {
-        ExerciseSessionRow(
-            ZonedDateTime.now().minusMinutes(30),
-            ZonedDateTime.now(),
-            UUID.randomUUID().toString(),
-            "Running",
-            sourceAppName = "My Fitness app",
-            sourceAppIcon = context.getDrawable(R.drawable.ic_launcher_foreground)
-        )
+            Spacer(Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = name.ifBlank { "Unnamed session" },
+                    style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1
+                )
+
+                Text(
+                    text = "$startText – $endText  ·  $durationText",
+                    style = MaterialTheme.typography.body2,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (iconPainter != null) {
+                        Icon(
+                            painter = iconPainter,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(14.dp)
+                                .padding(end = 6.dp),
+                            tint = Color.Unspecified
+                        )
+                    }
+                    Text(
+                        text = "From: $sourceAppName",
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+
+                if (showId) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "id: $uid",
+                        style = MaterialTheme.typography.overline,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.5f),
+                        maxLines = 1
+                    )
+                }
+            }
+
+            IconButton(onClick = { onDeleteClick(uid) }) {
+                Icon(Icons.Filled.Delete, contentDescription = "Delete session")
+            }
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colors.onSurface.copy(alpha = 0.5f)
+            )
+        }
     }
 }

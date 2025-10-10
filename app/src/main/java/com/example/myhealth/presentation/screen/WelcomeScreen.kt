@@ -150,28 +150,7 @@ fun WelcomeScreen(
             Spacer(Modifier.height(4.dp))
         }
 
-        // ---------- Top CTAs (single source of truth) ----------
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            CtaButton(
-                title = "Start Exercise",
-                icon = Icons.Filled.PlayArrow,
-                bg = Color(0xFF4C6FFF),
-                onClick = { navController.navigate(Screen.ExerciseSessions.route) },
-                modifier = Modifier.weight(1f)
-            )
-            CtaButton(
-                title = "Record Weight",
-                icon = Icons.Filled.Accessibility,
-                bg = Color(0xFF00B894),
-                onClick = { navController.navigate(Screen.InputReadings.route) },
-                modifier = Modifier.weight(1f)
-            )
-        }
+
 
         // ---------- Reminder (no duplicate CTA) ----------
         val stepsRemaining = max(0, stepGoal - steps)
@@ -182,7 +161,7 @@ fun WelcomeScreen(
         }
         ReminderCard(
             text = reminderText,
-            primaryText = "View plan",        // key change to avoid duplicating Start Exercise
+            primaryText = "start exercise",        // key change to avoid duplicating Start Exercise
             secondaryText = "Record Weight",
             onPrimary = { navController.navigate(Screen.ExerciseSessions.route) },
             onSecondary = { navController.navigate(Screen.InputReadings.route) }

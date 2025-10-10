@@ -9,9 +9,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.Card
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -26,174 +26,102 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.myhealth.data.ExerciseSession   // ← use your real model
+import com.example.myhealth.data.ExerciseSession   // use your real model
 
 // ---------------------------
 // Public API (matches your caller)
 // ---------------------------
 
 /**
- * Stats dashboard screen (Material 2).
+ * Stats dashboard content for the Exercise Sessions module (Material 2).
  *
- * This version matches your existing call site:
- *   ExerciseStatsScreen(modifier = ..., sessions = sessionsList)
+ * NOTE:
+ * - This composable intentionally does NOT include a TopAppBar/Scaffold.
+ *   Your parent screen (ExerciseSessionScreen) already provides the app bar,
+ *   so we only render the inner content to avoid a duplicated title bar.
  *
- * @param modifier Optional outer modifier (so your caller can pass padding()).
- * @param sessions Raw sessions list used to compute StatsUiState on the fly.
- * @param onBack   Optional back handler. If null, no back icon is shown.
+ * - The function signature matches your current call site:
+ *     ExerciseStatsScreen(modifier = ..., sessions = sessionsList)
  */
 @Composable
 fun ExerciseStatsScreen(
     modifier: Modifier = Modifier,
-    sessions: List<ExerciseSession>,
-    onBack: (() -> Unit)? = null
+    sessions: List<ExerciseSession>
 ) {
-    // Build a UI state from the raw sessions.
-    // Replace the placeholder aggregator with real fields whenever you are ready.
+    // Build UI state from raw sessions (placeholder aggregator for now).
     val state = remember(sessions) { buildStatsUiStateFrom(sessions) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Exercise sessions") },
-                navigationIcon = {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White
-                            )
-                        }
-                    }
-                },
-                backgroundColor = BrandBlue,
-                contentColor = Color.White,
-                elevation = 4.dp
-            )
-        },
-        backgroundColor = MaterialTheme.colors.background
-    ) { padding ->
-        Column(
-            modifier = modifier      // ← respect caller's modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(padding)
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        // 1) Week summary + progress bar
+        Text(
+            "This week",
+            style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
+        )
+        Spacer(Modifier.height(8.dp))
+        SummaryProgressCard(
+            completed = state.weekCompleted,
+            goal = state.weekGoal
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        // 2) Quick stats row (3 cards)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 1) Week summary + progress bar
-            Text(
-                "This week",
-                style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
+            QuickStatCard(
+                title = "Total time",
+                value = "${state.totalMinutes}m",
+                modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.height(8.dp))
-            SummaryProgressCard(
-                completed = state.weekCompleted,
-                goal = state.weekGoal
+            QuickStatCard(
+                title = "Avg / session",
+                value = "${state.avgPerSessionMinutes}m",
+                modifier = Modifier.weight(1f)
             )
-
-            Spacer(Modifier.height(16.dp))
-
-            // 2) Quick stats row (3 cards)
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                QuickStatCard(
-                    title = "Total time",
-                    value = "${state.totalMinutes}m",
-                    modifier = Modifier.weight(1f)
-                )
-                QuickStatCard(
-                    title = "Avg / session",
-                    value = "${state.avgPerSessionMinutes}m",
-                    modifier = Modifier.weight(1f)
-                )
-                QuickStatCard(
-                    title = "Longest streak",
-                    value = "${state.longestStreakDays} days",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            // 3) Weekly trend
-            SectionTitle("Weekly activity")
-            CardBox {
-                WeeklyBarChart(
-                    values = state.weeklyMinutes,
-                    labels = listOf("M", "T", "W", "T", "F", "S", "S"),
-                    barWidth = 18.dp,
-                    height = 140.dp
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            // 4) Activity breakdown
-            SectionTitle("Activity breakdown")
-            CardBox {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    state.activityBreakdown.forEach {
-                        BreakdownRow(name = it.name, percent = it.percent)
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            // 5) Achievements
-            SectionTitle("Achievements")
-            CardBox {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    state.achievements.forEach { badge ->
-                        Text(badge, fontSize = 15.sp)
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            // 6) Source apps
-            SectionTitle("Source apps")
-            CardBox {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    state.sourceApps.forEachIndexed { index, src ->
-                        Text(src.label, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            src.lastSyncText,
-                            style = LocalTextStyle.current.copy(color = Muted, fontSize = 13.sp)
-                        )
-                        if (index != state.sourceApps.lastIndex) {
-                            // Replace Divider(color=…) with a 1dp Box (M2-safe)
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(CardStroke)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(24.dp))
+            QuickStatCard(
+                title = "Longest streak",
+                value = "${state.longestStreakDays} days",
+                modifier = Modifier.weight(1f)
+            )
         }
+
+        Spacer(Modifier.height(20.dp))
+
+        // 3) Weekly trend
+        SectionTitle("Weekly activity")
+        CardBox {
+            WeeklyBarChart(
+                values = state.weeklyMinutes,
+                labels = listOf("M", "T", "W", "T", "F", "S", "S"),
+                barWidth = 18.dp,
+                height = 140.dp
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // 4) Activity breakdown
+        SectionTitle("Activity breakdown")
+        CardBox {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                state.activityBreakdown.forEach {
+                    BreakdownRow(name = it.name, percent = it.percent)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -208,13 +136,10 @@ data class StatsUiState(
     val avgPerSessionMinutes: Int,
     val longestStreakDays: Int,
     val weeklyMinutes: List<Int>,            // size = 7 (Mon..Sun)
-    val activityBreakdown: List<ActivityShare>,
-    val achievements: List<String>,          // e.g., "🏆 10 sessions completed"
-    val sourceApps: List<SourceApp>
+    val activityBreakdown: List<ActivityShare>
 )
 
 data class ActivityShare(val name: String, val percent: Int)
-data class SourceApp(val label: String, val lastSyncText: String)
 
 // ---------------------------
 // Colors (Material 2 friendly)
@@ -243,7 +168,7 @@ private fun CardBox(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
-    // Use border() instead of Card(border=…) for maximum M2 compatibility
+    // Draw a 1dp rounded border (no dependency on Card(border=…))
     Card(
         backgroundColor = CardBg,
         elevation = 0.dp,
@@ -305,7 +230,10 @@ private fun QuickStatCard(title: String, value: String, modifier: Modifier = Mod
         ) {
             Text(
                 title,
-                style = LocalTextStyle.current.copy(color = Muted, fontSize = 13.sp)
+                style = androidx.compose.ui.text.TextStyle(
+                    color = Muted,
+                    fontSize = 13.sp
+                )
             )
             Spacer(Modifier.height(6.dp))
             Text(value, style = MaterialTheme.typography.h6.copy(fontWeight = FontWeight.Bold))
@@ -320,7 +248,7 @@ private fun BreakdownRow(name: String, percent: Int) {
             Text(name, fontSize = 15.sp)
             Text(
                 "$percent%",
-                style = LocalTextStyle.current.copy(color = Muted, fontSize = 14.sp)
+                style = androidx.compose.ui.text.TextStyle(color = Muted, fontSize = 14.sp)
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -422,9 +350,15 @@ private fun WeeklyBarChart(
         ) {
             labels.forEachIndexed { i, lab ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(lab, style = LocalTextStyle.current.copy(color = Muted, fontSize = 13.sp))
+                    Text(
+                        lab,
+                        style = androidx.compose.ui.text.TextStyle(color = Muted, fontSize = 13.sp)
+                    )
                     val v = values.getOrNull(i) ?: 0
-                    if (v > 0) Text("${v}m", style = LocalTextStyle.current.copy(color = Muted, fontSize = 12.sp))
+                    if (v > 0) Text(
+                        "${v}m",
+                        style = androidx.compose.ui.text.TextStyle(color = Muted, fontSize = 12.sp)
+                    )
                 }
             }
         }
@@ -461,13 +395,8 @@ private fun buildStatsUiStateFrom(sessions: List<ExerciseSession>): StatsUiState
         activityBreakdown = listOf(
             ActivityShare("Zone-2 cardio", 0),
             ActivityShare("Core stability", 0),
-            ActivityShare("Strength", 0),
-            ActivityShare("Other", 0)
-        ), // TODO: compute based on session type/category
-        achievements = emptyList(), // TODO: generate badges from milestones
-        sourceApps = listOf(
-            SourceApp("Google Fit", "Last sync: —") // TODO: fill with real sync info
-        )
+            ActivityShare("Strength", 0)
+        ) // TODO: compute based on session type/category
     )
 }
 
@@ -483,10 +412,11 @@ private fun Preview_ExerciseStatsScreen() {
     val dummySessions: List<ExerciseSession> = emptyList()
 
     MaterialTheme {
-        ExerciseStatsScreen(
-            modifier = Modifier.padding(16.dp),
-            sessions = emptyList(),   // preview only
-            onBack = {}
-        )
+        Column(Modifier.padding(16.dp)) {
+            ExerciseStatsScreen(
+                modifier = Modifier.fillMaxSize(),
+                sessions = emptyList()
+            )
+        }
     }
 }

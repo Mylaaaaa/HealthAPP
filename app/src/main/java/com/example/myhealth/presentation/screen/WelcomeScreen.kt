@@ -150,8 +150,6 @@ fun WelcomeScreen(
             Spacer(Modifier.height(4.dp))
         }
 
-
-
         // ---------- Reminder (no duplicate CTA) ----------
         val stepsRemaining = max(0, stepGoal - steps)
         val reminderText = when {

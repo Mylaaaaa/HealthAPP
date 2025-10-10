@@ -1,4 +1,5 @@
 package com.example.myhealth.presentation
+import com.example.myhealth.presentation.loginregister.RootApp
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -13,8 +14,6 @@ class MainActivity : ComponentActivity() {
 
         val healthConnectManager = (application as BaseApplication).healthConnectManager
 
-        setContent {
-            HealthConnectApp(healthConnectManager = healthConnectManager)
-        }
+        setContent { RootApp(healthConnectManager = healthConnectManager) }
     }
 }

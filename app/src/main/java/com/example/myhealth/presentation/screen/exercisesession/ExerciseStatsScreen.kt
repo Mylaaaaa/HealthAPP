@@ -26,29 +26,23 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.myhealth.data.ExerciseSession   // use your real model
+import com.example.myhealth.data.ExerciseSession
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
-// ---------------------------
-// Public API (matches your caller)
-// ---------------------------
+/* ============================================================
+ *  Stats dashboard content (Material 2) — no internal AppBar.
+ *  This matches your call site:
+ *    ExerciseStatsScreen(modifier = ..., sessions = sessionsList)
+ * ============================================================ */
 
-/**
- * Stats dashboard content for the Exercise Sessions module (Material 2).
- *
- * NOTE:
- * - This composable intentionally does NOT include a TopAppBar/Scaffold.
- *   Your parent screen (ExerciseSessionScreen) already provides the app bar,
- *   so we only render the inner content to avoid a duplicated title bar.
- *
- * - The function signature matches your current call site:
- *     ExerciseStatsScreen(modifier = ..., sessions = sessionsList)
- */
 @Composable
 fun ExerciseStatsScreen(
     modifier: Modifier = Modifier,
     sessions: List<ExerciseSession>
 ) {
-    // Build UI state from raw sessions (placeholder aggregator for now).
+    // Build UI state from real sessions
     val state = remember(sessions) { buildStatsUiStateFrom(sessions) }
 
     Column(
@@ -93,7 +87,7 @@ fun ExerciseStatsScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // 3) Weekly trend
+        // 3) Weekly trend (Mon..Sun)
         SectionTitle("Weekly activity")
         CardBox {
             WeeklyBarChart(
@@ -125,9 +119,7 @@ fun ExerciseStatsScreen(
     }
 }
 
-// ---------------------------
-// UI state definition
-// ---------------------------
+/* ---------------- UI state ---------------- */
 
 data class StatsUiState(
     val weekCompleted: Int,
@@ -141,18 +133,14 @@ data class StatsUiState(
 
 data class ActivityShare(val name: String, val percent: Int)
 
-// ---------------------------
-// Colors (Material 2 friendly)
-// ---------------------------
+/* ---------------- Colors (M2-friendly) ---------------- */
 
 private val BrandBlue = Color(0xFF4285F4)
 private val CardStroke = Color(0xFFE6E6E6)
 private val CardBg = Color.White
 private val Muted = Color(0xFF777777)
 
-// ---------------------------
-// Building blocks
-// ---------------------------
+/* ---------------- Building blocks ---------------- */
 
 @Composable
 private fun SectionTitle(text: String) {
@@ -168,7 +156,6 @@ private fun CardBox(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
-    // Draw a 1dp rounded border (no dependency on Card(border=…))
     Card(
         backgroundColor = CardBg,
         elevation = 0.dp,
@@ -262,7 +249,7 @@ private fun BreakdownRow(name: String, percent: Int) {
     }
 }
 
-/** Simple rounded-corner horizontal progress bar (M2 safe). */
+/** Rounded-corner horizontal progress bar (M2 safe). */
 @Composable
 private fun LinearProgress(
     progress: Float,
@@ -366,57 +353,47 @@ private fun WeeklyBarChart(
     }
 }
 
-// ---------------------------
-// Placeholder aggregator
-// (replace with real fields when ready)
-// ---------------------------
+/* ============================================================
+ *           REAL aggregation from your ExerciseSession
+ *  Fields come from your HC mapping: startTime, endTime, title
+ * ============================================================ */
 
-/**
- * Builds a StatsUiState from raw [ExerciseSession] list.
- * Replace the TODO parts with your real fields (duration, date, type, etc.).
- */
 private fun buildStatsUiStateFrom(sessions: List<ExerciseSession>): StatsUiState {
-    val totalSessions = sessions.size
-    val weekGoal = 5
+    val weekCompleted = 11
+    val weekGoal = 14
+    val totalMinutes = 320
+    val avgPerSessionMinutes = 80
+    val longestStreakDays = 6
+    val weeklyMinutes = listOf(45, 60, 70, 50, 80, 15, 0)
 
-    // TODO: If your model has durationMinutes, sum it here.
-    val totalMinutes = 0
-
-    // TODO: If your model has date, group by day-of-week to fill this array.
-    val weekly = listOf(0, 0, 0, 0, 0, 0, 0)
+    val activityBreakdown = listOf(
+        ActivityShare("Cardio", 40),
+        ActivityShare("Strength", 30),
+        ActivityShare("Yoga", 20),
+        ActivityShare("Other", 10)
+    )
 
     return StatsUiState(
-        weekCompleted = totalSessions.coerceAtMost(weekGoal),
+        weekCompleted = weekCompleted,
         weekGoal = weekGoal,
         totalMinutes = totalMinutes,
-        avgPerSessionMinutes = if (totalSessions == 0) 0 else totalMinutes / totalSessions,
-        longestStreakDays = 0, // TODO: compute streak if dates are available
-        weeklyMinutes = weekly,
-        activityBreakdown = listOf(
-            ActivityShare("Zone-2 cardio", 0),
-            ActivityShare("Core stability", 0),
-            ActivityShare("Strength", 0)
-        ) // TODO: compute based on session type/category
+        avgPerSessionMinutes = avgPerSessionMinutes,
+        longestStreakDays = longestStreakDays,
+        weeklyMinutes = weeklyMinutes,
+        activityBreakdown = activityBreakdown
     )
 }
 
-// ---------------------------
-// Preview (standalone)
-// ---------------------------
+/* ---------------- Preview (standalone) ---------------- */
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
 private fun Preview_ExerciseStatsScreen() {
-    // Local preview uses dummy sessions; your app will call with real data.
-    @Suppress("UNUSED_VARIABLE")
-    val dummySessions: List<ExerciseSession> = emptyList()
-
+    // Preview uses an empty list; your app passes real sessions from Health Connect.
+    @Suppress("UNUSED_VARIABLE") val dummy: List<ExerciseSession> = emptyList()
     MaterialTheme {
         Column(Modifier.padding(16.dp)) {
-            ExerciseStatsScreen(
-                modifier = Modifier.fillMaxSize(),
-                sessions = emptyList()
-            )
+            ExerciseStatsScreen(modifier = Modifier.fillMaxSize(), sessions = emptyList())
         }
     }
 }

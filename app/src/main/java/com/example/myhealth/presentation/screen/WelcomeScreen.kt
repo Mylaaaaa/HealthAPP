@@ -1,6 +1,8 @@
 // file: app/src/main/java/com/example/myhealth/presentation/screen/WelcomeScreen.kt
 package com.example.myhealth.presentation.screen
 
+import androidx.compose.material.TextButton
+import com.example.myhealth.presentation.loginregister.FakeAuthStore
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -114,9 +116,12 @@ fun WelcomeScreen(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val isLoggedIn = FakeAuthStore.currentUserEmail != null
+                val displayName = FakeAuthStore.currentUserName() ?: userName
+
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "👋 Hi, $userName",
+                        text = "👋 Hi, $displayName",
                         color = Color.White,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.SemiBold
@@ -124,13 +129,28 @@ fun WelcomeScreen(
                     Spacer(Modifier.height(6.dp))
                     CapsuleChip(text = "🔥 ${currentStreakDays}-day streak")
                 }
-                Icon(
-                    Icons.Filled.FitnessCenter,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.9f),
-                    modifier = Modifier.size(28.dp)
-                )
+
+                if (!isLoggedIn) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(onClick = {
+                            // 切换到登录：RootApp 会显示 AuthNavHost
+                            FakeAuthStore.logout()
+                        }) { Text("Login", color = Color.White) }
+
+                        TextButton(onClick = {
+                            // 切换到注册：RootApp 里先登出再显示 AuthNavHost；在 Auth 里选择 register
+                            FakeAuthStore.logout()
+                        }) { Text("Register", color = Color.White) }
+                    }
+                } else {
+                    TextButton(onClick = {
+                        FakeAuthStore.logout() // RootApp 观察到 false 后自动显示 AuthNavHost（登录页）
+                    }) {
+                        Text("Logout", color = Color.White)
+                    }
+                }
             }
+
         }
 
         // ---------- Permission banners ----------

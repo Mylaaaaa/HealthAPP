@@ -1,269 +1,315 @@
 package com.example.myhealth.presentation.screen.exercisesession
 
 import android.content.Context
-import android.content.SharedPreferences
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.edit
-import com.example.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
-import java.time.DayOfWeek
-import java.time.LocalDate
-import java.time.temporal.TemporalAdjusters
+import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 
-/**
- * Courses screen (build-safe, no top bar here).
- * - No internal top app bar to avoid duplicated headers with parent screen.
- * - Buttons show Toast by default so you can verify tap works immediately.
- * - Progress auto-syncs from PlanTasksStore (i.e., when Workout marks all planned tasks done).
- */
-data class CourseLite(
+/* --------------------------------------------------------------------------
+ * Lightweight models & storage – kept in this file so you don't touch others.
+ * Marked `internal` to avoid "private in file" access errors from this file.
+ * In a larger app, move them into your data layer and delete this section.
+ * -------------------------------------------------------------------------- */
+
+internal data class CourseLite(
     val id: String,
     val title: String,
-    val totalWeeks: Int,
+    val weeks: Int,
     val daysPerWeek: Int
 )
 
-data class WeekStats(
-    val weekIndex: Int,
-    val totalWeeks: Int,
-    val weekDone: Int,
-    val weekTarget: Int,
-    val totalDone: Int,
-    val totalTarget: Int
-)
+internal class CoursesRepository {
+    // Simple in-memory catalog
+    internal val all = listOf(
+        CourseLite("fatloss_4w", "4-week Fat Loss Journey", 4, 5),
+        CourseLite("lean_6w", "Lean Strength", 6, 4),
+        CourseLite("hiit_3w", "HIIT Booster", 3, 3),
+    )
 
-private class CourseProgressStore(private val context: Context) {
-    private val sp: SharedPreferences
-        get() = context.getSharedPreferences("courses_progress", Context.MODE_PRIVATE)
-
-    fun ensureSeed(course: CourseLite) {
-        if (!sp.contains("active_course")) sp.edit { putString("active_course", course.id) }
-        if (!sp.contains("start_date")) {
-            val monday = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-            sp.edit { putString("start_date", monday.toString()) }
-        }
-    }
-
-    private fun startMonday(): LocalDate {
-        val raw = sp.getString("start_date", null)
-        return if (raw.isNullOrBlank()) {
-            val monday = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-            sp.edit { putString("start_date", monday.toString()) }
-            monday
-        } else LocalDate.parse(raw)
-    }
-
-    fun currentWeekIndex(course: CourseLite): Int {
-        val weeks = ((LocalDate.now()
-            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-            .toEpochDay() - startMonday().toEpochDay()) / 7).toInt()
-        return weeks.coerceIn(0, course.totalWeeks - 1)
-    }
-
-    fun weekStats(course: CourseLite, weekIndex: Int): WeekStats {
-        val done = sp.getStringSet("done_days", emptySet()) ?: emptySet()
-        val totalDone = done.size
-        val weekDone = (totalDone % course.daysPerWeek).coerceAtLeast(0)
-        return WeekStats(
-            weekIndex = weekIndex,
-            totalWeeks = course.totalWeeks,
-            weekDone = weekDone,
-            weekTarget = course.daysPerWeek,
-            totalDone = totalDone,
-            totalTarget = course.totalWeeks * course.daysPerWeek
-        )
-    }
-
-    /** Called whenever PlanTasksStore changes to mirror course progress. */
-    fun syncFromPlanTasksStore(date: LocalDate = LocalDate.now()) {
-        val plan = PlanTasksStore(context.applicationContext)
-        val tasks = plan.getTasks(date)
-        val planned = tasks.filter { it.type != "synthetic" }
-        if (planned.isEmpty()) return
-        val allDone = planned.all { it.completed }
-        val set = sp.getStringSet("done_days", mutableSetOf())!!.toMutableSet()
-        if (allDone) set.add(date.toString()) else set.remove(date.toString())
-        sp.edit { putStringSet("done_days", set) }
-    }
+    fun myCourses(): List<CourseLite> = listOf(all[0])           // pretend user has joined the first
+    fun discover(): List<CourseLite> = all.drop(0)               // the rest are discoverable
+    fun findById(id: String?): CourseLite? = all.firstOrNull { it.id == id }
 }
 
-/**
- * Parent should host its own TopAppBar. This composable draws only the body.
- */
+internal class CoursePrefs(ctx: Context) {
+    private val sp = ctx.getSharedPreferences("course_prefs", Context.MODE_PRIVATE)
+
+    fun getActiveCourseId(): String? = sp.getString("active_course", null)
+    fun setActiveCourseId(id: String) { sp.edit().putString("active_course", id).apply() }
+
+    // Progress for top card visuals
+    fun getWeekIndex(id: String?): Int = if (id == null) 0 else sp.getInt("wkIdx_$id", 0)
+    fun getWeekDone(id: String?): Int = if (id == null) 0 else sp.getInt("wkDone_$id", 0)
+
+    // Utility so Workout “mark all complete” can write back if you need later:
+    fun setWeekDone(id: String, done: Int) { sp.edit().putInt("wkDone_$id", done).apply() }
+}
+
+/* ==========================================================================
+ * MAIN, callback-driven implementation (reusable).
+ *  - Keep this as the single source of truth for the screen UI.
+ *  - Other overloads delegate to this to keep compatibility.
+ * ========================================================================== */
+
 @Composable
 fun ExerciseCoursesScreen(
     modifier: Modifier = Modifier,
-    // Optional callbacks. Defaults show Toast so taps are visible without navigation wiring.
-    onContinue: () -> Unit = {},
-    onSwitchCourse: () -> Unit = {},
-    onPreviewCourse: (CourseLite) -> Unit = {},
-    onJoinCourse: (CourseLite) -> Unit = {}
+    showTopBar: Boolean = true,
+    onBack: () -> Unit = {},
+    onContinue: (courseId: String) -> Unit = {},
+    onSwitch: (courseId: String) -> Unit = {},
+    onJoin: (courseId: String) -> Unit = {},
+    onPreview: (courseId: String) -> Unit = {}
 ) {
-    val ctx = LocalContext.current
-    val toast = remember { { msg: String -> Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show() } }
+    val context = LocalContext.current
+    val prefs = remember { CoursePrefs(context) }
+    val repo = remember { CoursesRepository() }
 
-    // Active course (simple single-course model for now)
-    val activeCourse = remember {
-        CourseLite(
-            id = "fat_loss_4w",
-            title = "4-week Fat Loss Journey",
-            totalWeeks = 4,
-            daysPerWeek = 5
+    val scaffold = rememberScaffoldState()
+    val scope = rememberCoroutineScope()
+
+    // Active course id is kept in prefs; reflect into Compose state
+    var activeId by remember { mutableStateOf(prefs.getActiveCourseId()) }
+    val activeCourse = remember(activeId) { repo.findById(activeId) }
+    val myCourses = remember { repo.myCourses() }
+    val discover = remember { repo.discover() }
+
+    // Switch dialog
+    var showSwitchDialog by remember { mutableStateOf(false) }
+    var pendingSwitchId by remember { mutableStateOf<String?>(null) }
+
+    Scaffold(
+        scaffoldState = scaffold,
+        topBar = {
+            if (showTopBar) {
+                TopAppBar(
+                    title = { Text("Exercise sessions") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                )
+            }
+        }
+    ) { inner ->
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(inner)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            // Active course card
+            item {
+                Text("Courses", style = MaterialTheme.typography.h6, modifier = Modifier.padding(bottom = 8.dp))
+                ActiveCourseCard(
+                    course = activeCourse,
+                    prefs = prefs,
+                    onContinue = { activeCourse?.id?.let(onContinue) },
+                    onSwitch = {
+                        // Find a candidate from "My courses" different from current active
+                        pendingSwitchId = myCourses.firstOrNull { it.id != activeCourse?.id }?.id
+                        if (pendingSwitchId != null) showSwitchDialog = true
+                    }
+                )
+            }
+
+            // My courses
+            if (myCourses.isNotEmpty()) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.FitnessCenter, null, tint = MaterialTheme.colors.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("My courses", style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
+                    }
+                }
+                items(myCourses) { c ->
+                    MyCourseItem(
+                        course = c,
+                        isActive = c.id == activeId,
+                        onGo = {
+                            // Make it the active one, then trigger Continue flow
+                            prefs.setActiveCourseId(c.id)
+                            activeId = c.id
+                            onContinue(c.id)
+                        }
+                    )
+                }
+            }
+
+            // Discover section
+            if (discover.isNotEmpty()) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colors.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Discover", style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
+                    }
+                }
+                items(discover) { c ->
+                    DiscoverItem(
+                        course = c,
+                        onPreview = { onPreview(c.id) },
+                        onJoin = {
+                            prefs.setActiveCourseId(c.id)
+                            activeId = c.id
+                            onJoin(c.id)
+                            scope.launch { scaffold.snackbarHostState.showSnackbar("Joined: ${c.title}") }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // Confirm dialog for switching active course
+    if (showSwitchDialog && pendingSwitchId != null) {
+        AlertDialog(
+            onDismissRequest = { showSwitchDialog = false; pendingSwitchId = null },
+            title = { Text("Switch active course?") },
+            text = { Text("Your active course will be changed.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val newId = pendingSwitchId!!
+                    prefs.setActiveCourseId(newId)
+                    // Update local state so UI reflects immediately
+                    activeId = newId
+                    onSwitch(newId)
+                    showSwitchDialog = false
+                    pendingSwitchId = null
+                }) { Text("Switch") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSwitchDialog = false; pendingSwitchId = null }) { Text("Cancel") }
+            }
         )
-    }
-    val progress = remember { CourseProgressStore(ctx.applicationContext) }
-
-    // Receive updates from PlanTasksStore → reflect into course progress
-    var version by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) { progress.ensureSeed(activeCourse) }
-    DisposableEffect(Unit) {
-        val planStore = PlanTasksStore(ctx.applicationContext)
-        val l = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-            progress.syncFromPlanTasksStore(LocalDate.now())
-            version++
-        }
-        planStore.addOnChangeListener(l)
-        onDispose { planStore.removeOnChangeListener(l) }
-    }
-
-    // Recompute stats on every sync tick
-    val weekIndex = remember(version) { progress.currentWeekIndex(activeCourse) }
-    val stats = remember(version) { progress.weekStats(activeCourse, weekIndex) }
-
-    // Discover list (more items as you asked)
-    val discoverList = remember {
-        listOf(
-            CourseLite("fat_loss_4w", "4-week Fat Loss Journey", 4, 5),
-            CourseLite("lean_strength_6w", "Lean Strength • 6 weeks", 6, 4),
-            CourseLite("endurance_8w", "8-week Endurance Base", 8, 4),
-            CourseLite("mobility_3w", "Mobility Reset • 3 weeks", 3, 3),
-            CourseLite("core_30d", "Core Builder • 30 days", 4, 7) // 4w × 7d
-        )
-    }
-
-    // Body without top bar (so no duplicate header)
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp)
-    ) {
-        item {
-            Text("Courses", style = MaterialTheme.typography.h6, fontWeight = FontWeight.SemiBold)
-        }
-
-        // Active course summary card
-        item {
-            ActiveCourseCard(
-                course = activeCourse,
-                stats = stats,
-                onContinue = {
-                    toast("Continue tapped")
-                    onContinue()
-                },
-                onSwitch = {
-                    toast("Switch tapped")
-                    onSwitchCourse()
-                }
-            )
-        }
-
-        item { Text("My courses", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold) }
-
-        // Mini card for the same active course (kept by your design)
-        item {
-            MyCourseMiniCard(
-                course = activeCourse,
-                stats = stats,
-                isActive = true,
-                onGo = {
-                    toast("Go tapped")
-                    onContinue()
-                }
-            )
-        }
-
-        item { Text("Discover", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold) }
-
-        // More Discover items
-        items(discoverList) { c ->
-            DiscoverCourseCard(
-                course = c,
-                onPreview = {
-                    toast("Preview • ${c.title}")
-                    onPreviewCourse(c)
-                },
-                onJoin = {
-                    toast("Join • ${c.title}")
-                    onJoinCourse(c)
-                }
-            )
-        }
     }
 }
 
+/* ==========================================================================
+ * Backward-compatible overloads – DO NOT delete.
+ * These ensure you don't need to touch other files that already call the
+ * screen with different parameters.
+ * ========================================================================== */
+
+/**
+ * Old call sites that only passed a Modifier (or nothing) will compile here.
+ * We keep the top bar OFF so the parent screen's app bar doesn't duplicate.
+ */
+@Composable
+fun ExerciseCoursesScreen(modifier: Modifier = Modifier) {
+    ExerciseCoursesScreen(
+        modifier = modifier,
+        showTopBar = false,      // avoid double top bars
+        onBack = {},
+        onContinue = {},         // keep as no-op to be safe
+        onSwitch = {},
+        onJoin = {},
+        onPreview = {}
+    )
+}
+
+/**
+ * Call sites that pass a NavController will compile here.
+ * Map actions to your real routes if they differ.
+ */
+@Composable
+fun ExerciseCoursesScreen(
+    navController: NavController,
+    modifier: Modifier = Modifier
+) {
+    ExerciseCoursesScreen(
+        modifier = modifier,
+        showTopBar = false,                       // parent top bar takes over
+        onBack = { navController.popBackStack() },
+        onContinue = { /* e.g. */ navController.navigate("workout") },
+        onSwitch = { /* optional toast/log */ },
+        onJoin = { /* after joining, go to workout */ navController.navigate("workout") },
+        onPreview = { courseId -> navController.navigate("course_preview/$courseId") }
+    )
+}
+
+/* ==========================================================================
+ * UI pieces
+ * ========================================================================== */
+
 @Composable
 private fun ActiveCourseCard(
-    course: CourseLite,
-    stats: WeekStats,
+    course: CourseLite?,
+    prefs: CoursePrefs,
     onContinue: () -> Unit,
     onSwitch: () -> Unit
 ) {
-    Card(elevation = 4.dp, shape = RoundedCornerShape(16.dp)) {
-        Column(Modifier.padding(16.dp)) {
+    Card(elevation = 4.dp, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier
-                        .size(48.dp)
-                        .background(MaterialTheme.colors.primary.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+                    Modifier.size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colors.primary.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.FitnessCenter, contentDescription = null, tint = MaterialTheme.colors.primary)
+                    Icon(Icons.Default.FitnessCenter, null, tint = MaterialTheme.colors.primary)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(course.title, fontWeight = FontWeight.SemiBold)
-                    Text("Week ${stats.weekIndex + 1} of ${stats.totalWeeks}", style = MaterialTheme.typography.caption)
+                    Text(course?.title ?: "No active course", fontWeight = FontWeight.SemiBold)
+                    val wIdx = prefs.getWeekIndex(course?.id)
+                    if (course != null) {
+                        Text(
+                            "Week ${wIdx + 1} of ${course.weeks}",
+                            style = MaterialTheme.typography.body2,
+                            color = Color.Gray
+                        )
+                    }
                 }
-                OutlinedButton(onClick = onSwitch) { Text("Switch") }
+                OutlinedButton(enabled = course != null, onClick = onSwitch) { Text("Switch") }
             }
 
-            Spacer(Modifier.height(12.dp))
-            LinearProgressIndicator(
-                progress = if (stats.totalTarget == 0) 0f else stats.totalDone / stats.totalTarget.toFloat(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-            Text("${stats.totalDone}/${stats.totalTarget} days", style = MaterialTheme.typography.caption)
-
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Event, contentDescription = null, tint = MaterialTheme.colors.primary)
-                Spacer(Modifier.width(6.dp))
-                Text("This week: ${stats.weekDone}/${stats.weekTarget}", style = MaterialTheme.typography.body2)
+            if (course != null) {
+                val done = prefs.getWeekDone(course.id)
+                val perWeek = course.daysPerWeek
+                LinearProgressIndicator(
+                    progress = (done / perWeek.toFloat()).coerceIn(0f, 1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50))
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(22.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF4CAF50).copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF2E7D32)) }
+                    Spacer(Modifier.width(8.dp))
+                    Text("This week: $done/${course.daysPerWeek}", style = MaterialTheme.typography.body2)
+                }
             }
 
-            Spacer(Modifier.height(8.dp))
-            Button(modifier = Modifier.fillMaxWidth(), onClick = onContinue) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null)
+            Button(enabled = course != null, onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.PlayArrow, null)
                 Spacer(Modifier.width(8.dp))
                 Text("Continue")
             }
@@ -272,65 +318,53 @@ private fun ActiveCourseCard(
 }
 
 @Composable
-private fun MyCourseMiniCard(
+private fun MyCourseItem(
     course: CourseLite,
-    stats: WeekStats,
     isActive: Boolean,
     onGo: () -> Unit
 ) {
-    Card(elevation = 2.dp, shape = RoundedCornerShape(14.dp)) {
-        Column(Modifier.padding(12.dp)) {
-            Text(course.title, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(6.dp))
-            LinearProgressIndicator(
-                progress = if (stats.totalTarget == 0) 0f else stats.totalDone / stats.totalTarget.toFloat(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(enabled = isActive, onClick = { /* no-op */ }) { Text(if (isActive) "Active" else "Inactive") }
-                Button(onClick = onGo) { Text("Go") }
+    Card(elevation = 2.dp, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(course.title, fontWeight = FontWeight.SemiBold)
+                Text("Week 1/${course.weeks}", style = MaterialTheme.typography.caption, color = Color.Gray)
             }
+            OutlinedButton(enabled = isActive, onClick = { /* already active */ }) {
+                Text(if (isActive) "Active" else "—")
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = onGo) { Text("Go") }
         }
     }
 }
 
 @Composable
-private fun DiscoverCourseCard(
+private fun DiscoverItem(
     course: CourseLite,
     onPreview: () -> Unit,
     onJoin: () -> Unit
 ) {
-    Card(elevation = 3.dp, shape = RoundedCornerShape(14.dp)) {
-        Column(Modifier.padding(16.dp)) {
+    Card(elevation = 2.dp, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.FavoriteBorder, contentDescription = null, tint = MaterialTheme.colors.primary)
-                Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(course.title, fontWeight = FontWeight.SemiBold)
-                    Text("${course.totalWeeks} weeks · ${course.daysPerWeek} days/wk", style = MaterialTheme.typography.caption)
+                Box(
+                    Modifier.size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colors.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Default.FitnessCenter, null, tint = MaterialTheme.colors.primary) }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("${course.title} · ${course.weeks} weeks", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${course.weeks} weeks · ${course.daysPerWeek} days/wk",
+                        style = MaterialTheme.typography.caption, color = Color.Gray
+                    )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                // Simple copy per course id just to make cards feel different
-                when (course.id) {
-                    "lean_strength_6w" -> "Progressive strength + short cardio. Build lean muscles with 4 sessions/week."
-                    "endurance_8w" -> "Aerobic base, long Z2 days, one tempo. Ideal for runners and cyclists."
-                    "mobility_3w" -> "Daily mobility flows for joints & posture. Short and restorative."
-                    "core_30d" -> "Everyday core micro-workouts to reinforce stability."
-                    else -> "Balanced cardio + strength with mobility finisher. Great for beginners."
-                },
-                style = MaterialTheme.typography.body2
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onPreview) { Text("Preview") }
-                Button(onClick = onJoin) { Text("Join") }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = onPreview, modifier = Modifier.weight(1f)) { Text("Preview") }
+                Button(onClick = onJoin, modifier = Modifier.weight(1f)) { Text("Join") }
             }
         }
     }

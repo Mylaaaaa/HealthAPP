@@ -2,10 +2,10 @@ package com.example.myhealth.presentation.loginregister
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -17,26 +17,30 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * Login screen (Material 3).
- * - Email uses ASCII keyboard + ASCII filtering so '.' can be typed with any IME.
- * - onLoginSuccess(): call after FakeAuthStore.login() succeeds.
+ * Material 2 implementation of your login screen.
+ *
+ * Notes:
+ * - Kept the original function name `LoginScreenM3` so callers don't need to change.
+ * - Replaced all Material3 widgets with Material (M2) counterparts.
+ * - Kept the logic and parameters unchanged.
+ * - KeyboardOptions(keyboardType = Email) allows typing '.' normally.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreenM3(
-    onLoginSuccess: () -> Unit,
+    onLogin: (email: String, password: String) -> Boolean,
     onNavigateRegister: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var pwd by remember { mutableStateOf("") }
     var showPwd by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-
     val canSubmit = email.contains("@") && pwd.length >= 6
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(title = { Text("Sign in", fontWeight = FontWeight.SemiBold) })
+            TopAppBar(
+                title = { Text("Sign in", fontWeight = FontWeight.SemiBold) }
+            )
         }
     ) { padding ->
         Column(
@@ -49,21 +53,17 @@ fun LoginScreenM3(
         ) {
             Text(
                 "Welcome back to MyHealth",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.subtitle1,
                 textAlign = TextAlign.Center
             )
 
             OutlinedTextField(
                 value = email,
-                onValueChange = { s ->
-                    // Keep ASCII only to avoid full-width punctuation like '。'
-                    email = s.filter { it.code in 33..126 }
-                    error = null
-                },
+                onValueChange = { email = it; error = null },
                 label = { Text("Email") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
             )
 
             OutlinedTextField(
@@ -84,19 +84,29 @@ fun LoginScreenM3(
             )
 
             if (error != null) {
-                Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    error!!,
+                    color = MaterialTheme.colors.error,
+                    style = MaterialTheme.typography.body2
+                )
             }
 
             Button(
                 onClick = {
-                    val ok = FakeAuthStore.login(email.trim(), pwd)
-                    if (ok) onLoginSuccess() else error = "Invalid email or password"
+                    val ok = onLogin(email.trim(), pwd)
+                    if (!ok) error = "Invalid email or password"
                 },
                 enabled = canSubmit,
-                modifier = Modifier.fillMaxWidth().height(48.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
             ) { Text("Login") }
 
-            TextButton(onClick = onNavigateRegister) { Text("Create an account") }
+            Spacer(Modifier.height(8.dp))
+
+            TextButton(onClick = onNavigateRegister) {
+                Text("Create an account")
+            }
         }
     }
 }

@@ -2,10 +2,10 @@ package com.example.myhealth.presentation.loginregister
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,13 +16,16 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
 /**
- * Register screen (Material 3).
- * - Email uses ASCII keyboard + ASCII filtering so '.' can be typed with any IME.
+ * Material 2 implementation of your register screen.
+ *
+ * Notes:
+ * - Kept the original function name `RegisterScreenM3` so callers don't need to change.
+ * - Replaced all Material3 widgets with Material (M2) counterparts.
+ * - Kept the logic and parameters unchanged.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterScreenM3(
-    onRegisterSuccess: () -> Unit,
+    onRegister: (name: String, email: String, password: String) -> Boolean,
     onNavigateLogin: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -40,7 +43,7 @@ fun RegisterScreenM3(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(title = { Text("Create account", fontWeight = FontWeight.SemiBold) })
+            TopAppBar(title = { Text("Create account", fontWeight = FontWeight.SemiBold) })
         }
     ) { padding ->
         Column(
@@ -61,14 +64,11 @@ fun RegisterScreenM3(
 
             OutlinedTextField(
                 value = email,
-                onValueChange = { s ->
-                    email = s.filter { it.code in 33..126 }
-                    error = null
-                },
+                onValueChange = { email = it; error = null },
                 label = { Text("Email") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
             )
 
             OutlinedTextField(
@@ -106,19 +106,29 @@ fun RegisterScreenM3(
             )
 
             if (!same && confirm.isNotEmpty()) {
-                Text("Passwords do not match", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Passwords do not match",
+                    color = MaterialTheme.colors.error,
+                    style = MaterialTheme.typography.body2
+                )
             }
             if (error != null) {
-                Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    error!!,
+                    color = MaterialTheme.colors.error,
+                    style = MaterialTheme.typography.body2
+                )
             }
 
             Button(
                 onClick = {
-                    val ok = FakeAuthStore.register(name.trim(), email.trim(), pwd)
-                    if (ok) onRegisterSuccess() else error = "Email already exists"
+                    val ok = onRegister(name.trim(), email.trim(), pwd)
+                    if (!ok) error = "Email already exists"
                 },
                 enabled = canSubmit,
-                modifier = Modifier.fillMaxWidth().height(48.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
             ) { Text("Create account") }
 
             TextButton(onClick = onNavigateLogin) { Text("Back to sign in") }

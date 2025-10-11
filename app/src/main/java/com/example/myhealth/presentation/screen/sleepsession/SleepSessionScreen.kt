@@ -1,9 +1,9 @@
 @file:Suppress("unused")
 
 package com.example.myhealth.presentation.screen.sleepsession
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.material.icons.automirrored.filled.List
+
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,12 +15,16 @@ import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -28,9 +32,9 @@ import androidx.health.connect.client.records.SleepSessionRecord
 import com.example.myhealth.data.SleepSessionData
 import java.time.*
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
-import java.util.UUID
 
 /* =========================================================================================
  * Sleep sessions (Material 2) with a blue bottom bar (icons + labels).
@@ -116,9 +120,7 @@ private fun SleepOverviewTab(sessions: List<SleepSessionData>) {
     val yesterdaySession = sessionForDate(sessions, yesterday, zone)
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
         OverviewCardFor("Today", todaySession, zone)
-
         OverviewCardFor("Yesterday", yesterdaySession, zone)
     }
 }
@@ -150,7 +152,7 @@ private fun OverviewCardFor(title: String, s: SleepSessionData?, zone: ZoneId) {
                 awake = m.awakeMin
             )
 
-            // Suggestion block (simple rules)
+            // Simple suggestion rules
             SuggestionBlock(m)
         }
     }
@@ -230,62 +232,264 @@ private fun SleepLogTab(sessions: List<SleepSessionData>) {
 }
 
 /* ----------------------------------- Stats ----------------------------------- */
-
+/**
+ * Weekly stacked bars (last 7 days) + key insights.
+ * - One bar per day, stacked by sleep stages (Deep/Light/REM/Awake)
+ * - Day is grouped by **wake day** (endTime's local date)
+ * - Below the chart: average duration, session count, sleep debt (8h target),
+ *   bedtime consistency (std dev), earliest/latest bedtime.
+ */
 @Composable
 private fun SleepStatsTab(sessions: List<SleepSessionData>) {
-    val zone = ZoneId.systemDefault()
-    val today = LocalDate.now(zone)
-    val last7 = sessions.take(7)
+    val zone = remember { ZoneId.systemDefault() }
+    val today = remember { LocalDate.now(zone) }
+    val last7 = remember(sessions) { aggregateLast7Days(sessions, zone, today) }
 
-    // Weekly numbers
-    val weekMinAsleep = last7.sumOf { metrics(it).asleepMin }
-    val targetWeek = 8 * 60 * 7
-    val sleepBalance = weekMinAsleep - targetWeek        // negative => debt
-    val avgMin = averageMinutes(last7)
-    val consistencyStd = bedtimeStdDevMinutes(last7, zone)
-    val (earliestBed, latestBed) = bedtimeExtremes(last7, zone)
+    val labels = last7.map { it.date.dayOfWeek.name.first().toString() }
 
-    // Mini bars for last 7 sessions (left = older)
-    val bars: List<Int> = last7.map { (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0) }
-
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-        // Stage distribution & duration buckets（保留前版两卡）
-        StageDistributionCard(sessions)
-        DurationBucketsCard(sessions)
-
-        // —— Weekly insights ——
-        Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Weekly analysis", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-                Text("Average duration: ${formatHhMm(Duration.ofMinutes(avgMin.toLong()))}")
-                Text("Sessions counted: ${last7.size}")
-
-                val balanceHours = (sleepBalance / 60.0)
-                val balanceText = if (sleepBalance >= 0)
-                    "Sleep surplus: +${"%.1f".format(balanceHours)} h (vs 8h/day)"
-                else
-                    "Sleep debt: ${"%.1f".format(-balanceHours)} h (vs 8h/day)"
-                Text(balanceText)
-
-                Text("Bedtime consistency (std dev): ${consistencyStd} min")
-                if (earliestBed != null && latestBed != null) {
-                    Text("Earliest / latest bedtime: $earliestBed – $latestBed")
-                }
-
-                Spacer(Modifier.height(8.dp))
-                MiniBarsRow(values = bars, maxMinutes = 9 * 60) // scale to 9h
-                Text(
-                    "Last 7 sessions (left older → right newer)",
-                    style = MaterialTheme.typography.caption,
-                    color = Color.Gray
-                )
+    Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Past 7 days", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
+            WeeklyStackedBars(days = last7, barWidth = 18.dp, height = 140.dp)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                labels.forEach { Text(it, style = MaterialTheme.typography.caption) }
             }
+            Spacer(Modifier.height(12.dp))
+            LegendColumn()
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    WeeklyAnalysisCard(sessions = sessions, zone = zone)
+}
+
+// ---------- Data aggregation ----------
+
+private data class DayAgg(
+    val date: LocalDate,
+    val totalMin: Int,
+    val deepMin: Int,
+    val lightMin: Int,
+    val remMin: Int,
+    val awakeMin: Int
+)
+
+/** Group sessions by wake day (endTime local date) and keep only last 7 days. */
+private fun aggregateLast7Days(
+    sessions: List<SleepSessionData>,
+    zone: ZoneId,
+    today: LocalDate
+): List<DayAgg> {
+    val startDay = today.minusDays(6)
+    val byDay = mutableMapOf<LocalDate, MutableList<SleepSessionData>>()
+    sessions.forEach { s ->
+        val day = s.endTime.atZone(zone).toLocalDate()
+        if (!day.isBefore(startDay) && !day.isAfter(today)) {
+            byDay.getOrPut(day) { mutableListOf() }.add(s)
+        }
+    }
+
+    fun minutesBetween(a: Instant, b: Instant): Int =
+        Duration.between(a, b).toMinutes().toInt().coerceAtLeast(0)
+
+    val result = mutableListOf<DayAgg>()
+    for (i in 0..6) {
+        val d = startDay.plusDays(i.toLong())
+        val list = byDay[d].orEmpty()
+        var deep = 0; var light = 0; var rem = 0; var awake = 0; var total = 0
+        list.forEach { s ->
+            total += (s.duration ?: Duration.between(s.startTime, s.endTime)).toMinutes().toInt().coerceAtLeast(0)
+            s.stages.forEach { st ->
+                val m = minutesBetween(st.startTime, st.endTime)
+                when (st.stage) {
+                    SleepSessionRecord.STAGE_TYPE_DEEP  -> deep += m
+                    SleepSessionRecord.STAGE_TYPE_LIGHT -> light += m
+                    SleepSessionRecord.STAGE_TYPE_REM   -> rem += m
+                    SleepSessionRecord.STAGE_TYPE_AWAKE -> awake += m
+                }
+            }
+        }
+        result += DayAgg(d, total, deep, light, rem, awake)
+    }
+    return result
+}
+
+// ---------- Chart (Canvas) ----------
+
+/**
+ * Stacked bars with **no gaps between bars** (inter-bar gap = 0).
+ * Bars are centered horizontally in the available width.
+ */
+// --- replace your WeeklyStackedBars with this one ---
+
+@Composable
+private fun WeeklyStackedBars(
+    days: List<DayAgg>,
+    barWidth: Dp,
+    height: Dp
+) {
+    val bwPx = with(LocalDensity.current) { barWidth.toPx() }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+    ) {
+        val w = size.width
+        val h = size.height
+        val count = days.size.coerceAtLeast(1)
+
+        val segment = w / count
+
+        val barTop    = h * 0.05f
+        val barHeight = h * 0.90f
+        val barBottom = barTop + barHeight
+
+        val maxMin = (days.maxOfOrNull { it.totalMin } ?: 0).coerceAtLeast(1)
+
+        days.forEachIndexed { i, d ->
+            val centerX = segment * i + segment / 2f
+            val xLeft   = centerX - bwPx / 2f
+
+            drawRect(
+                color = Color(0xFFE5E7EB),
+                topLeft = Offset(xLeft, barTop),
+                size = Size(bwPx, barHeight)
+            )
+
+            var currentTop = barBottom
+            fun drawPart(color: Color, minutes: Int) {
+                if (minutes <= 0) return
+                val ph  = (minutes.toFloat() / maxMin) * barHeight
+                val top = currentTop - ph
+                drawRect(
+                    color = color,
+                    topLeft = Offset(xLeft, top),
+                    size = Size(bwPx, ph)
+                )
+                currentTop = top
+            }
+
+            drawPart(Color(0xFF26A69A), d.deepMin)   // Deep
+            drawPart(Color(0xFF42A5F5), d.lightMin)  // Light
+            drawPart(Color(0xFF7E57C2), d.remMin)    // REM
+            drawPart(Color(0xFFF6A13E), d.awakeMin)  // Awake
         }
     }
 }
 
-/* ------------------------------ Reused cards ------------------------------- */
+
+@Composable
+private fun LegendColumn() {
+    @Composable fun RowItem(text: String, color: Color) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(10.dp).background(color, CircleShape))
+            Text(text, style = MaterialTheme.typography.caption)
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        RowItem("Deep sleep",  Color(0xFF26A69A))
+        RowItem("Light sleep", Color(0xFF42A5F5))
+        RowItem("REM",         Color(0xFF7E57C2))
+        RowItem("Awake",       Color(0xFFF6A13E))
+        RowItem("Background track (not a stage)", Color(0x14000000))
+    }
+}
+
+// ---------- Weekly analysis ----------
+
+@Composable
+private fun WeeklyAnalysisCard(sessions: List<SleepSessionData>, zone: ZoneId) {
+    val totalMin = sessions.sumOf {
+        (it.duration ?: Duration.between(it.startTime, it.endTime))
+            .toMinutes().toInt().coerceAtLeast(0)
+    }
+    val count = sessions.size
+    val avgMin = if (count > 0) totalMin / count else 0
+
+    // Sleep debt vs 8h/day over last 7 days (non-negative)
+    val days = 7
+    val target = days * 8 * 60
+    val debtMin = (target - totalMin).coerceAtLeast(0)
+
+    // Bedtime consistency (std dev on bedtime minutes-of-day)
+    val bedMinutes = sessions.map {
+        val lt = it.startTime.atZone(zone).toLocalTime()
+        lt.hour * 60 + lt.minute
+    }
+    val stdDevMin = bedMinutes.stdDevRounded()
+
+    // Earliest / latest bedtime
+    val earliest = sessions.minByOrNull { it.startTime }?.startTime?.atZone(zone)?.toLocalTime()
+    val latest   = sessions.maxByOrNull { it.startTime }?.startTime?.atZone(zone)?.toLocalTime()
+
+    Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Weekly analysis", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+            Text("Average duration: ${formatHhMm(avgMin)}")
+            Text("Sessions counted: $count")
+            Text("Sleep debt: ${formatHhMm(debtMin)} (vs 8h/day)")
+            Text("Bedtime consistency (std dev): ${stdDevMin} min")
+            if (earliest != null && latest != null) {
+                Text("Earliest / latest bedtime: ${earliest.formatHm()} – ${latest.formatHm()}")
+            }
+            // Mini sparkline
+            Spacer(Modifier.height(6.dp))
+            MiniSparkline(bedMinutes)
+        }
+    }
+}
+
+private fun List<Int>.stdDevRounded(): Int {
+    if (isEmpty()) return 0
+    val avg = this.average()
+    val varSum = this.sumOf { ((it - avg) * (it - avg)) }
+    val std = sqrt(varSum / this.size)
+    return std.toInt()
+}
+
+private fun LocalTime.formatHm(): String =
+    "%02d:%02d".format(this.hour, this.minute)
+
+private fun formatHhMm(totalMin: Int): String {
+    val h = (totalMin / 60).coerceAtLeast(0)
+    val m = (totalMin % 60).coerceAtLeast(0)
+    return "$h" + "h" + "$m" + "m"
+}
+
+// ---------- Small sparkline ----------
+
+@Composable
+private fun MiniSparkline(points: List<Int>) {
+    if (points.isEmpty()) return
+    val p = points.takeLast(14) // last 2 weeks if available
+    Canvas(Modifier.fillMaxWidth().height(20.dp)) {
+        val w = size.width
+        val h = size.height
+        val max = (p.maxOrNull() ?: 0).coerceAtLeast(1)
+        val step = w / (p.size - 1).coerceAtLeast(1)
+        for (i in 0 until p.size - 1) {
+            val x1 = step * i
+            val x2 = step * (i + 1)
+            val y1 = h - (p[i] / max.toFloat()) * h
+            val y2 = h - (p[i + 1] / max.toFloat()) * h
+            drawLine(
+                color = Color(0xFF3F51B5),
+                start = Offset(x1, y1),
+                end   = Offset(x2, y2),
+                strokeWidth = 3f
+            )
+        }
+    }
+}
+
+/* ------------------------------ Reused cards (optional) ------------------------------- */
 
 @Composable
 private fun StageDistributionCard(sessions: List<SleepSessionData>) {
@@ -359,6 +563,7 @@ private fun LabeledProgress(label: String, percent: Int, color: Color) {
         }
     }
 }
+
 @Composable
 private fun StageBreakdownRows(deep: Int, light: Int, rem: Int, awake: Int) {
     @Composable
@@ -447,31 +652,6 @@ private fun LegendRow(text: String, color: Color) {
     }
 }
 
-/** 7-small bars row without Canvas. */
-@Composable
-private fun MiniBarsRow(values: List<Int>, maxMinutes: Int) {
-    val maxV = maxMinutes.coerceAtLeast(values.maxOrNull() ?: 1)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        values.forEach { v ->
-            val frac = (v.coerceAtLeast(0) / maxV.toFloat()).coerceIn(0f, 1f)
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(56.dp)
-                    .background(Color(0x14000000), RoundedCornerShape(6.dp)),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(frac)
-                        .background(MaterialTheme.colors.primary, RoundedCornerShape(6.dp))
-                )
-            }
-        }
-    }
-}
-
 /* --------------------------------- helpers ---------------------------------- */
 
 private fun stageColor(stage: Int): Color = when (stage) {
@@ -494,13 +674,8 @@ private fun formatHhMm(d: Duration): String {
     val totalMin = d.toMinutes().toInt().coerceAtLeast(0)
     val h = totalMin / 60
     val m = totalMin % 60
-    return "${h}h${m}m"
+    return "$h" + "h" + "$m" + "m"
 }
-
-private fun averageMinutes(list: List<SleepSessionData>): Int =
-    if (list.isEmpty()) 0
-    else list.map { (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0) }
-        .average().roundToInt()
 
 /** Pick the latest session whose end date equals the given date in user's zone. */
 private fun sessionForDate(all: List<SleepSessionData>, date: LocalDate, zone: ZoneId): SleepSessionData? =
@@ -544,6 +719,11 @@ private fun metrics(s: SleepSessionData): DayMetrics {
         efficiencyPercent = eff
     )
 }
+
+private fun List<SleepSessionData>.averageMinutes(): Int =
+    if (isEmpty()) 0
+    else map { (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0) }
+        .average().roundToInt()
 
 /** Std dev (minutes) of bedtimes in last N sessions. */
 private fun bedtimeStdDevMinutes(list: List<SleepSessionData>, zone: ZoneId): Int {

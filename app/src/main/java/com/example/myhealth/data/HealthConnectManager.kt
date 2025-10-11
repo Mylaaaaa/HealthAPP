@@ -327,12 +327,9 @@ class HealthConnectManager(private val context: Context) {
             sessions.add(
                 SleepSessionData(
                     uid = session.metadata.id,
-                    title = session.title,
                     notes = session.notes,
                     startTime = session.startTime,
-                    startZoneOffset = session.startZoneOffset,
                     endTime = session.endTime,
-                    endZoneOffset = session.endZoneOffset,
                     duration = aggregateResponse[SleepSessionRecord.SLEEP_DURATION_TOTAL],
                     stages = session.stages
                 )

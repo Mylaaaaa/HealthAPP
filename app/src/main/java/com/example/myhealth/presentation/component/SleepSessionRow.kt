@@ -73,8 +73,10 @@ fun SleepSessionRow(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         val formatter = DateTimeFormatter.ofPattern("eee, d LLL")
-        val startDateTime =
-            dateTimeWithOffsetOrDefault(sessionData.startTime, sessionData.startZoneOffset)
+        val startDateTime = dateTimeWithOffsetOrDefault(
+            sessionData.startTime,
+            sessionData.startTime.atZone(java.time.ZoneId.systemDefault()).offset
+        )
 
 
         Row(
@@ -110,12 +112,13 @@ fun SleepSessionRow(
         }
     }
     if (expanded) {
+        val startOffset = sessionData.startTime.atZone(java.time.ZoneId.systemDefault()).offset
+        val endOffset = sessionData.endTime.atZone(java.time.ZoneId.systemDefault()).offset
         val startEndLabel = formatDisplayTimeStartEnd(
-            sessionData.startTime,
-            sessionData.startZoneOffset,
-            sessionData.endTime,
-            sessionData.endZoneOffset
+            sessionData.startTime, startOffset,
+            sessionData.endTime, endOffset
         )
+
         SleepSessionDetailRow(labelId = R.string.sleep_time, item = startEndLabel)
         SleepSessionDetailRow(
             labelId = R.string.sleep_duration,
@@ -139,12 +142,9 @@ fun SleepSessionRowPreview() {
             SleepSessionRow(
                 SleepSessionData(
                     uid = "123",
-                    title = "My sleep",
                     notes = "Slept well",
                     startTime = start.toInstant(),
-                    startZoneOffset = start.offset,
                     endTime = end.toInstant(),
-                    endZoneOffset = end.offset,
                     duration = Duration.between(start, end),
                     stages = listOf(
                         SleepSessionRecord.Stage(

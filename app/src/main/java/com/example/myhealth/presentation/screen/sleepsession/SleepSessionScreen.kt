@@ -1,7 +1,8 @@
 @file:Suppress("unused")
 
 package com.example.myhealth.presentation.screen.sleepsession
-
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,11 +26,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.records.SleepSessionRecord
 import com.example.myhealth.data.SleepSessionData
-import java.time.Duration
-import java.time.ZoneId
-import java.time.ZonedDateTime
+import java.time.*
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 import java.util.UUID
 
 /* =========================================================================================
@@ -62,10 +62,10 @@ fun SleepSessionScreen(
     }
 
     // Bottom bar state
-    var selected by remember { mutableStateOf(0) }
+    var selected by remember { mutableIntStateOf(0) }
     val tabs = listOf(
         NavItem("Overview", Icons.Filled.Home),
-        NavItem("Log", Icons.Filled.List),
+        NavItem("Log", Icons.AutoMirrored.Filled.List),
         NavItem("Stats", Icons.Filled.BarChart)
     )
 
@@ -108,43 +108,50 @@ fun SleepSessionScreen(
 
 @Composable
 private fun SleepOverviewTab(sessions: List<SleepSessionData>) {
-    val latest = sessions.maxByOrNull { it.endTime }
-    val last7 = sessions.take(7)
-    val avgMin7 = averageMinutes(last7)
-    val typicalBed = typicalClock(last7) { it.startTime }
-    val typicalWake = typicalClock(last7) { it.endTime }
-    val sessionsCount = last7.size
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
+    val yesterday = today.minusDays(1)
+
+    val todaySession = sessionForDate(sessions, today, zone)
+    val yesterdaySession = sessionForDate(sessions, yesterday, zone)
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Today", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                if (latest != null) {
-                    val d = latest.duration ?: Duration.ZERO
-                    Text("${formatHhMm(d)}  •  Stages: ${latest.stages.size}")
-                } else {
-                    Text("No sleep recorded")
-                }
-            }
-        }
 
-        Card(elevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("This week", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                Text("Average duration: ${formatHhMm(Duration.ofMinutes(avgMin7.toLong()))}")
-                Text("Sessions: $sessionsCount")
-            }
-        }
+        OverviewCardFor("Today", todaySession, zone)
 
-        Card(elevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Consistency", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                Text("Typical bedtime: $typicalBed")
-                Text("Typical wake-up: $typicalWake")
+        OverviewCardFor("Yesterday", yesterdaySession, zone)
+    }
+}
+
+@Composable
+private fun OverviewCardFor(title: String, s: SleepSessionData?, zone: ZoneId) {
+    Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+            if (s == null) {
+                Text("No sleep recorded")
+                return@Column
             }
+
+            val m = metrics(s)
+            val fmt = DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+
+            Text(
+                "${formatHhMm(Duration.ofMinutes(m.totalMinutes.toLong()))}  •  " +
+                        "Efficiency ${m.efficiencyPercent}%"
+            )
+            Text("Bedtime ${fmt.format(s.startTime)}  ·  Wake-up ${fmt.format(s.endTime)}")
+
+            // Stage details
+            StageBreakdownRows(
+                deep = m.deepMin,
+                light = m.lightMin,
+                rem = m.remMin,
+                awake = m.awakeMin
+            )
+
+            // Suggestion block (simple rules)
+            SuggestionBlock(m)
         }
     }
 }
@@ -196,24 +203,23 @@ private fun SleepLogTab(sessions: List<SleepSessionData>) {
                         Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
                             Divider()
                             Spacer(Modifier.height(8.dp))
+                            val m = metrics(s)
                             Text("Notes: ${s.notes ?: "—"}")
                             Spacer(Modifier.height(10.dp))
 
                             Text("Stages", fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(6.dp))
 
-                            // Simple timeline bar (no Canvas)
                             StageTimelineBarSimple(s.stages, height = 10.dp)
-
-                            // Color legend (includes gray meaning)
                             Spacer(Modifier.height(8.dp))
                             StageLegend()
 
-                            // Textual breakdown
                             Spacer(Modifier.height(10.dp))
-                            StageBreakdownText(
-                                stages = s.stages,
-                                totalMinutes = (s.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(1)
+                            StageBreakdownRows(
+                                deep = m.deepMin,
+                                light = m.lightMin,
+                                rem = m.remMin,
+                                awake = m.awakeMin
                             )
                         }
                     }
@@ -227,10 +233,64 @@ private fun SleepLogTab(sessions: List<SleepSessionData>) {
 
 @Composable
 private fun SleepStatsTab(sessions: List<SleepSessionData>) {
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
+    val last7 = sessions.take(7)
+
+    // Weekly numbers
+    val weekMinAsleep = last7.sumOf { metrics(it).asleepMin }
+    val targetWeek = 8 * 60 * 7
+    val sleepBalance = weekMinAsleep - targetWeek        // negative => debt
+    val avgMin = averageMinutes(last7)
+    val consistencyStd = bedtimeStdDevMinutes(last7, zone)
+    val (earliestBed, latestBed) = bedtimeExtremes(last7, zone)
+
+    // Mini bars for last 7 sessions (left = older)
+    val bars: List<Int> = last7.map { (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0) }
+
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+        // Stage distribution & duration buckets（保留前版两卡）
+        StageDistributionCard(sessions)
+        DurationBucketsCard(sessions)
+
+        // —— Weekly insights ——
+        Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Weekly analysis", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+                Text("Average duration: ${formatHhMm(Duration.ofMinutes(avgMin.toLong()))}")
+                Text("Sessions counted: ${last7.size}")
+
+                val balanceHours = (sleepBalance / 60.0)
+                val balanceText = if (sleepBalance >= 0)
+                    "Sleep surplus: +${"%.1f".format(balanceHours)} h (vs 8h/day)"
+                else
+                    "Sleep debt: ${"%.1f".format(-balanceHours)} h (vs 8h/day)"
+                Text(balanceText)
+
+                Text("Bedtime consistency (std dev): ${consistencyStd} min")
+                if (earliestBed != null && latestBed != null) {
+                    Text("Earliest / latest bedtime: $earliestBed – $latestBed")
+                }
+
+                Spacer(Modifier.height(8.dp))
+                MiniBarsRow(values = bars, maxMinutes = 9 * 60) // scale to 9h
+                Text(
+                    "Last 7 sessions (left older → right newer)",
+                    style = MaterialTheme.typography.caption,
+                    color = Color.Gray
+                )
+            }
+        }
+    }
+}
+
+/* ------------------------------ Reused cards ------------------------------- */
+
+@Composable
+private fun StageDistributionCard(sessions: List<SleepSessionData>) {
     val totalMin = sessions.sumOf { (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0) }
         .coerceAtLeast(1)
-
-    // Aggregate minutes by stage
     val byStage: Map<Int, Int> = remember(sessions) {
         sessions.flatMap { it.stages }.groupBy { it.stage }.mapValues { (_, list) ->
             list.sumOf {
@@ -238,43 +298,37 @@ private fun SleepStatsTab(sessions: List<SleepSessionData>) {
             }
         }
     }
-
-    // Duration buckets
-    val buckets = remember(sessions) {
-        val lt6 = sessions.count { ((it.duration ?: Duration.ZERO).toHours() < 6) }
-        val btw = sessions.count { val h = (it.duration ?: Duration.ZERO).toHours(); h in 6..8 }
-        val gt8 = sessions.count { ((it.duration ?: Duration.ZERO).toHours() > 8) }
-        Triple(lt6, btw, gt8)
-    }
-    val totalSessions = sessions.size.coerceAtLeast(1)
-
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(elevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Stage distribution", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-                listOf(
-                    SleepSessionRecord.STAGE_TYPE_DEEP,
-                    SleepSessionRecord.STAGE_TYPE_LIGHT,
-                    SleepSessionRecord.STAGE_TYPE_REM,
-                    SleepSessionRecord.STAGE_TYPE_AWAKE
-                ).forEach { st ->
-                    val mins = byStage[st] ?: 0
-                    val pct = ((mins.toFloat() / totalMin) * 100f).roundToInt()
-                    LabeledProgress(label = stageLabel(st), percent = pct, color = stageColor(st))
-                }
-                Spacer(Modifier.height(6.dp))
-                StageLegend() // explain colors + gray track
+    Card(elevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Stage distribution", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+            listOf(
+                SleepSessionRecord.STAGE_TYPE_DEEP,
+                SleepSessionRecord.STAGE_TYPE_LIGHT,
+                SleepSessionRecord.STAGE_TYPE_REM,
+                SleepSessionRecord.STAGE_TYPE_AWAKE
+            ).forEach { st ->
+                val mins = byStage[st] ?: 0
+                val pct = ((mins.toFloat() / totalMin) * 100f).roundToInt()
+                LabeledProgress(label = stageLabel(st), percent = pct, color = stageColor(st))
             }
+            Spacer(Modifier.height(6.dp))
+            StageLegend()
         }
+    }
+}
 
-        Card(elevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Duration buckets", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-                val (lt6, btw, gt8) = buckets
-                LabeledProgress("Under 6h",  (lt6 * 100f / totalSessions).roundToInt(), MaterialTheme.colors.error)
-                LabeledProgress("6–8h",      (btw * 100f / totalSessions).roundToInt(), MaterialTheme.colors.primary)
-                LabeledProgress("Over 8h",   (gt8 * 100f / totalSessions).roundToInt(), Color(0xFF26A69A))
-            }
+@Composable
+private fun DurationBucketsCard(sessions: List<SleepSessionData>) {
+    val totalSessions = sessions.size.coerceAtLeast(1)
+    val lt6 = sessions.count { ((it.duration ?: Duration.ZERO).toHours() < 6) }
+    val btw = sessions.count { val h = (it.duration ?: Duration.ZERO).toHours(); h in 6..8 }
+    val gt8 = sessions.count { ((it.duration ?: Duration.ZERO).toHours() > 8) }
+    Card(elevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Duration buckets", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+            LabeledProgress("Under 6h",  (lt6 * 100f / totalSessions).roundToInt(), MaterialTheme.colors.error)
+            LabeledProgress("6–8h",      (btw * 100f / totalSessions).roundToInt(), MaterialTheme.colors.primary)
+            LabeledProgress("Over 8h",   (gt8 * 100f / totalSessions).roundToInt(), Color(0xFF26A69A))
         }
     }
 }
@@ -305,26 +359,45 @@ private fun LabeledProgress(label: String, percent: Int, color: Color) {
         }
     }
 }
-
 @Composable
-private fun StatPill(title: String, value: String) {
-    Surface(shape = CircleShape, elevation = 2.dp) {
-        Column(
-            Modifier
-                .widthIn(min = 120.dp)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(value, fontWeight = FontWeight.Bold)
-            Text(title, style = MaterialTheme.typography.caption, color = Color.Gray)
+private fun StageBreakdownRows(deep: Int, light: Int, rem: Int, awake: Int) {
+    @Composable
+    fun Line(name: String, minutes: Int, color: Color) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(color, CircleShape))
+                Spacer(Modifier.width(8.dp))
+                Text(name)
+            }
+            Text(formatHhMm(Duration.ofMinutes(minutes.toLong())), color = Color.Gray)
         }
     }
+
+    Line("Deep sleep", deep, stageColor(SleepSessionRecord.STAGE_TYPE_DEEP))
+    Line("Light sleep", light, stageColor(SleepSessionRecord.STAGE_TYPE_LIGHT))
+    Line("REM",        rem,  stageColor(SleepSessionRecord.STAGE_TYPE_REM))
+    Line("Awake",      awake,stageColor(SleepSessionRecord.STAGE_TYPE_AWAKE))
+}
+
+/** Suggestion rules based on duration & efficiency & consistency. */
+@Composable
+private fun SuggestionBlock(m: DayMetrics) {
+    val tips = mutableListOf<String>()
+    if (m.totalMinutes < 7 * 60) tips += "Aim for at least 7 hours of sleep tonight."
+    if (m.efficiencyPercent < 85) tips += "Reduce awakenings: keep the room dark and cool, and avoid screens 30 minutes before bed."
+    if (m.bedtimeOffsetStdMin != null && m.bedtimeOffsetStdMin > 45)
+        tips += "Try to keep bedtime within a 45-minute window for better consistency."
+
+    if (tips.isEmpty()) tips += "Great job! Keep a consistent schedule to maintain quality."
+
+    Spacer(Modifier.height(6.dp))
+    Text("Tips", fontWeight = FontWeight.SemiBold)
+    tips.forEach { Text("• $it") }
 }
 
 /**
  * Simple horizontal stage bar (no Canvas).
- * Each stage becomes a weighted Box with a fixed color.
- * Gray track (background) is only the timeline track, NOT a sleep stage.
+ * Gray track is a background only (not a stage).
  */
 @Composable
 private fun StageTimelineBarSimple(stages: List<SleepSessionRecord.Stage>, height: Dp) {
@@ -336,7 +409,7 @@ private fun StageTimelineBarSimple(stages: List<SleepSessionRecord.Stage>, heigh
         Modifier
             .fillMaxWidth()
             .height(height)
-            .background(Color(0x14000000), shape = CircleShape) // <-- gray track = background only
+            .background(Color(0x14000000), shape = CircleShape)
             .padding(1.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -374,34 +447,26 @@ private fun LegendRow(text: String, color: Color) {
     }
 }
 
-/** Textual breakdown for stages: label + hh:mm + percent */
+/** 7-small bars row without Canvas. */
 @Composable
-private fun StageBreakdownText(stages: List<SleepSessionRecord.Stage>, totalMinutes: Int) {
-    val grouped = remember(stages) {
-        stages.groupBy { it.stage }.mapValues { (_, list) ->
-            list.sumOf {
-                Duration.between(it.startTime, it.endTime).toMinutes().toInt().coerceAtLeast(0)
-            }
-        }
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf(
-            SleepSessionRecord.STAGE_TYPE_DEEP,
-            SleepSessionRecord.STAGE_TYPE_LIGHT,
-            SleepSessionRecord.STAGE_TYPE_REM,
-            SleepSessionRecord.STAGE_TYPE_AWAKE
-        ).forEach { st ->
-            val mins = grouped[st] ?: 0
-            if (mins > 0) {
-                val pct = ((mins.toFloat() / totalMinutes) * 100f).roundToInt().coerceIn(0, 100)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(stageColor(st), CircleShape))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stageLabel(st))
-                    }
-                    Text("${formatHhMm(Duration.ofMinutes(mins.toLong()))}  (${pct}%)", color = Color.Gray)
-                }
+private fun MiniBarsRow(values: List<Int>, maxMinutes: Int) {
+    val maxV = maxMinutes.coerceAtLeast(values.maxOrNull() ?: 1)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        values.forEach { v ->
+            val frac = (v.coerceAtLeast(0) / maxV.toFloat()).coerceIn(0f, 1f)
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(56.dp)
+                    .background(Color(0x14000000), RoundedCornerShape(6.dp)),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(frac)
+                        .background(MaterialTheme.colors.primary, RoundedCornerShape(6.dp))
+                )
             }
         }
     }
@@ -437,19 +502,64 @@ private fun averageMinutes(list: List<SleepSessionData>): Int =
     else list.map { (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0) }
         .average().roundToInt()
 
-/** Typical clock time (avg minutes-of-day) for a field (start or end). */
-private fun typicalClock(
-    list: List<SleepSessionData>,
-    pick: (SleepSessionData) -> java.time.Instant
-): String {
-    if (list.isEmpty()) return "—"
-    val zone = ZoneId.systemDefault()
-    val minutes = list.map {
-        val zdt = ZonedDateTime.ofInstant(pick(it), zone)
-        zdt.hour * 60 + zdt.minute
+/** Pick the latest session whose end date equals the given date in user's zone. */
+private fun sessionForDate(all: List<SleepSessionData>, date: LocalDate, zone: ZoneId): SleepSessionData? =
+    all.filter { ZonedDateTime.ofInstant(it.endTime, zone).toLocalDate() == date }
+        .maxByOrNull { it.endTime }
+
+/** Metrics for one session (minutes + efficiency). */
+private data class DayMetrics(
+    val totalMinutes: Int,
+    val asleepMin: Int,
+    val awakeMin: Int,
+    val deepMin: Int,
+    val lightMin: Int,
+    val remMin: Int,
+    val efficiencyPercent: Int,
+    val bedtimeOffsetStdMin: Int? = null // filled only when used in weekly context
+)
+
+private fun metrics(s: SleepSessionData): DayMetrics {
+    val minsByStage = s.stages.groupBy { it.stage }.mapValues { (_, list) ->
+        list.sumOf {
+            Duration.between(it.startTime, it.endTime).toMinutes().toInt().coerceAtLeast(0)
+        }
     }
-    val avg = minutes.average().roundToInt()
-    val h = (avg / 60) % 24
-    val m = avg % 60
-    return "%02d:%02d".format(h, m)
+    val deep = minsByStage[SleepSessionRecord.STAGE_TYPE_DEEP] ?: 0
+    val light = minsByStage[SleepSessionRecord.STAGE_TYPE_LIGHT] ?: 0
+    val rem = minsByStage[SleepSessionRecord.STAGE_TYPE_REM] ?: 0
+    val awake = minsByStage[SleepSessionRecord.STAGE_TYPE_AWAKE] ?: 0
+
+    val total = (s.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(deep + light + rem + awake)
+    val asleep = deep + light + rem
+    val eff = if (total > 0) ((asleep * 100f) / total).roundToInt() else 0
+
+    return DayMetrics(
+        totalMinutes = total,
+        asleepMin = asleep,
+        awakeMin = awake,
+        deepMin = deep,
+        lightMin = light,
+        remMin = rem,
+        efficiencyPercent = eff
+    )
+}
+
+/** Std dev (minutes) of bedtimes in last N sessions. */
+private fun bedtimeStdDevMinutes(list: List<SleepSessionData>, zone: ZoneId): Int {
+    if (list.size < 2) return 0
+    val mins = list.map {
+        val z = ZonedDateTime.ofInstant(it.startTime, zone)
+        z.hour * 60 + z.minute
+    }
+    val mean = mins.average()
+    val variance = mins.map { (it - mean) * (it - mean) }.average()
+    return sqrt(variance).roundToInt()
+}
+
+private fun bedtimeExtremes(list: List<SleepSessionData>, zone: ZoneId): Pair<String?, String?> {
+    if (list.isEmpty()) return null to null
+    val fmt = DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+    val sorted = list.map { it.startTime }.sorted()
+    return fmt.format(sorted.first()) to fmt.format(sorted.last())
 }

@@ -1,6 +1,7 @@
 package com.example.myhealth.presentation.loginregister
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
@@ -9,41 +10,42 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * Material 2 implementation of your register screen.
- *
- * Notes:
- * - Kept the original function name `RegisterScreenM3` so callers don't need to change.
- * - Replaced all Material3 widgets with Material (M2) counterparts.
- * - Kept the logic and parameters unchanged.
+ * Material 2 login screen.
+ * - Keeps original function name so callers don't change.
+ * - TopAppBar/StatusBar are color-aligned to MaterialTheme.colors.primary.
+ * - Email field does not filter/trim while typing -> '.' is allowed.
  */
 @Composable
-fun RegisterScreenM3(
-    onRegister: (name: String, email: String, password: String) -> Boolean,
-    onNavigateLogin: () -> Unit
+fun LoginScreenM3(
+    onLogin: (email: String, password: String) -> Boolean,
+    onNavigateRegister: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var pwd by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
     var showPwd by remember { mutableStateOf(false) }
-    var showConfirm by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val canSubmit = email.contains("@") && pwd.length >= 6
 
-    val validEmail = email.contains("@")
-    val pwdOk = pwd.length >= 6
-    val same = pwd == confirm
-    val canSubmit = name.isNotBlank() && validEmail && pwdOk && same
+    val focus = LocalFocusManager.current
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Create account", fontWeight = FontWeight.SemiBold) })
+            TopAppBar(
+                title = { Text("Sign in", fontWeight = FontWeight.SemiBold) },
+                backgroundColor = MaterialTheme.colors.primary,
+                contentColor = contentColorFor(MaterialTheme.colors.primary),
+                elevation = 0.dp
+            )
         }
     ) { padding ->
         Column(
@@ -54,27 +56,38 @@ fun RegisterScreenM3(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it; error = null },
-                label = { Text("Full name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+            Text(
+                "Welcome back to MyHealth",
+                style = MaterialTheme.typography.subtitle1,
+                textAlign = TextAlign.Center
             )
 
+            // Email
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it; error = null },
+                onValueChange = { text ->
+                    // DO NOT trim/filter here so '.' is never blocked
+                    email = text
+                    error = null
+                },
                 label = { Text("Email") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focus.clearFocus() }
+                ),
+                visualTransformation = VisualTransformation.None
             )
 
+            // Password
             OutlinedTextField(
                 value = pwd,
                 onValueChange = { pwd = it; error = null },
-                label = { Text("Password (min 6 chars)") },
+                label = { Text("Password") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (showPwd) VisualTransformation.None else PasswordVisualTransformation(),
@@ -88,30 +101,6 @@ fun RegisterScreenM3(
                 }
             )
 
-            OutlinedTextField(
-                value = confirm,
-                onValueChange = { confirm = it; error = null },
-                label = { Text("Confirm password") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = if (showConfirm) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(onClick = { showConfirm = !showConfirm }) {
-                        Icon(
-                            imageVector = if (showConfirm) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = null
-                        )
-                    }
-                }
-            )
-
-            if (!same && confirm.isNotEmpty()) {
-                Text(
-                    "Passwords do not match",
-                    color = MaterialTheme.colors.error,
-                    style = MaterialTheme.typography.body2
-                )
-            }
             if (error != null) {
                 Text(
                     error!!,
@@ -122,16 +111,20 @@ fun RegisterScreenM3(
 
             Button(
                 onClick = {
-                    val ok = onRegister(name.trim(), email.trim(), pwd)
-                    if (!ok) error = "Email already exists"
+                    val ok = onLogin(email.trim(), pwd) // Only trim on submit
+                    if (!ok) error = "Invalid email or password"
                 },
                 enabled = canSubmit,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-            ) { Text("Create account") }
+            ) { Text("Login") }
 
-            TextButton(onClick = onNavigateLogin) { Text("Back to sign in") }
+            Spacer(Modifier.height(8.dp))
+
+            TextButton(onClick = onNavigateRegister) {
+                Text("Create an account")
+            }
         }
     }
 }

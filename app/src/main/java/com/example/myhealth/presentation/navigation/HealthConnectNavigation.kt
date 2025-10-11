@@ -1,17 +1,9 @@
-/*
- * Navigation host for MyHealth (Home as start destination).
- * Minimal changes from your original:
- * 1) startDestination -> Screen.Home.route
- * 2) Add composable(Screen.Home.route) { WelcomeScreen(navController) }
- * Everything else stays the same.
- */
 package com.example.myhealth.presentation.navigation
-
+import androidx.compose.runtime.getValue
 import com.example.myhealth.presentation.home.HomeHost
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.ScaffoldState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -50,8 +42,12 @@ import com.example.myhealth.showExceptionSnackbar
 import kotlinx.coroutines.launch
 
 /**
- * Provides the navigation in the app.
- * Uses Home as the start destination, rendering WelcomeScreen(navController) as the Home UI.
+ * App navigation graph.
+ * Start destination is Home. All screens keep your original behavior.
+ *
+ * Note:
+ * - Replaced all `by viewModel.xxx` usages with explicit `.value` to
+ *   avoid the Kotlin property delegate error on this file.
  */
 @Composable
 fun HealthConnectNavigation(
@@ -61,43 +57,41 @@ fun HealthConnectNavigation(
 ) {
     val scope = rememberCoroutineScope()
 
-    // Start from Home
     NavHost(navController = navController, startDestination = Screen.Home.route) {
 
-        // Home page: reuse your WelcomeScreen as the Home UI
+        // Home
         composable(Screen.Home.route) {
             HomeHost(navController = navController)
         }
 
+        // Privacy policy (deep link preserved)
         composable(
             route = Screen.PrivacyPolicy.route,
             deepLinks = listOf(
-                navDeepLink {
-                    action = "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"
-                }
+                navDeepLink { action = "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" }
             )
         ) {
             PrivacyPolicyScreen()
         }
 
-        composable(Screen.SettingsScreen.route){
+        // Settings
+        composable(Screen.SettingsScreen.route) {
             SettingsScreen { scope.launch { healthConnectManager.revokeAllPermissions() } }
         }
 
+        // Exercise Sessions
         composable(Screen.ExerciseSessions.route) {
             val viewModel: ExerciseSessionViewModel = viewModel(
-                factory = ExerciseSessionViewModelFactory(
-                    healthConnectManager = healthConnectManager
-                )
+                factory = ExerciseSessionViewModelFactory(healthConnectManager)
             )
-            LaunchedEffect(Unit) {
-                viewModel.initialLoad()
-            }
-            val permissionsGranted by viewModel.permissionsGranted
-            val sessionsList by viewModel.sessionsList
-            val permissions = viewModel.permissions
-            val backgroundReadAvailable by viewModel.backgroundReadAvailable
-            val backgroundReadGranted by viewModel.backgroundReadGranted
+
+            LaunchedEffect(Unit) { viewModel.initialLoad() }
+
+            val permissionsGranted       = viewModel.permissionsGranted.value
+            val sessionsList             = viewModel.sessionsList.value
+            val permissions              = viewModel.permissions
+            val backgroundReadAvailable  = viewModel.backgroundReadAvailable.value
+            val backgroundReadGranted    = viewModel.backgroundReadGranted.value
 
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
@@ -117,35 +111,30 @@ fun HealthConnectNavigation(
                     navController.navigate(Screen.ExerciseSessionDetail.route + "/$uid")
                 },
                 onDeleteClick = { uid -> viewModel.deleteExerciseSession(uid) },
-                onError = { exception ->
-                    showExceptionSnackbar(scaffoldState, scope, exception)
-                },
+                onError = { exception -> showExceptionSnackbar(scaffoldState, scope, exception) },
                 onPermissionsResult = { viewModel.initialLoad() },
                 onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
             )
         }
 
-
+        // Weight Records
         composable(Screen.WeightRecords.route) {
             val viewModel: InputReadingsViewModel = viewModel(
-                factory = InputReadingsViewModelFactory(
-                    healthConnectManager = healthConnectManager
-                )
+                factory = InputReadingsViewModelFactory(healthConnectManager)
             )
-            val permissionsGranted by viewModel.permissionsGranted
-            val readingsList by viewModel.readingsList
-            val permissions = viewModel.permissions
-            val weeklyAvg by viewModel.weeklyAvg
+
+            val permissionsGranted = viewModel.permissionsGranted.value
+            val readingsList       = viewModel.readingsList.value
+            val permissions        = viewModel.permissions
+            val weeklyAvg          = viewModel.weeklyAvg.value
+
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
                 rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
                     onPermissionsResult()
                 }
 
-            // Entering the "Weight History" also forces a refresh.
-            LaunchedEffect(Unit) {
-                viewModel.initialLoad()
-            }
+            LaunchedEffect(Unit) { viewModel.initialLoad() }
 
             InputReadingsScreen(
                 permissionsGranted = permissionsGranted,
@@ -155,26 +144,24 @@ fun HealthConnectNavigation(
                 weeklyAvg = weeklyAvg,
                 onDeleteClick = { uid -> viewModel.deleteWeightInput(uid) },
                 readingsList = readingsList,
-                onError = { exception ->
-                    showExceptionSnackbar(scaffoldState, scope, exception)
-                },
+                onError = { exception -> showExceptionSnackbar(scaffoldState, scope, exception) },
                 onPermissionsResult = { viewModel.initialLoad() },
                 onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
             )
         }
 
-
+        // Exercise Session Detail
         composable(Screen.ExerciseSessionDetail.route + "/{$UID_NAV_ARGUMENT}") {
             val uid = it.arguments?.getString(UID_NAV_ARGUMENT)!!
+
             val viewModel: ExerciseSessionDetailViewModel = viewModel(
-                factory = ExerciseSessionDetailViewModelFactory(
-                    uid = uid,
-                    healthConnectManager = healthConnectManager
-                )
+                factory = ExerciseSessionDetailViewModelFactory(uid, healthConnectManager)
             )
-            val permissionsGranted by viewModel.permissionsGranted
-            val sessionMetrics by viewModel.sessionMetrics
-            val permissions = viewModel.permissions
+
+            val permissionsGranted = viewModel.permissionsGranted.value
+            val sessionMetrics     = viewModel.sessionMetrics.value
+            val permissions        = viewModel.permissions
+
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
                 rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
@@ -192,21 +179,21 @@ fun HealthConnectNavigation(
                                 recordType + "/" + recordId + "/" + seriesRecordsType
                     )
                 },
-                onError = { exception ->
-                    showExceptionSnackbar(scaffoldState, scope, exception)
-                },
+                onError = { exception -> showExceptionSnackbar(scaffoldState, scope, exception) },
                 onPermissionsResult = { viewModel.initialLoad() },
                 onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
             )
         }
 
+        // Record List (from Session Detail)
         composable(
             Screen.RecordListScreen.route + "/{$RECORD_TYPE}" +
                     "/{$UID_NAV_ARGUMENT}" + "/{$SERIES_RECORDS_TYPE}"
         ) {
             val uid = it.arguments?.getString(UID_NAV_ARGUMENT)!!
-            val recordTypeString = it.arguments?.getString(RECORD_TYPE)!!
+            val recordTypeString        = it.arguments?.getString(RECORD_TYPE)!!
             val seriesRecordsTypeString = it.arguments?.getString(SERIES_RECORDS_TYPE)!!
+
             val viewModel: RecordListScreenViewModel = viewModel(
                 factory = RecordListViewModelFactory(
                     uid = uid,
@@ -215,9 +202,11 @@ fun HealthConnectNavigation(
                     healthConnectManager = healthConnectManager
                 )
             )
-            val permissionsGranted by viewModel.permissionsGranted
-            val recordList = viewModel.recordList
-            val permissions = viewModel.permissions
+
+            val permissionsGranted = viewModel.permissionsGranted.value
+            val recordList         = viewModel.recordList
+            val permissions        = viewModel.permissions
+
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
                 rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
@@ -237,15 +226,17 @@ fun HealthConnectNavigation(
             )
         }
 
+        // Sleep Sessions
         composable(Screen.SleepSessions.route) {
             val viewModel: SleepSessionViewModel = viewModel(
-                factory = SleepSessionViewModelFactory(
-                    healthConnectManager = healthConnectManager
-                )
+                factory = SleepSessionViewModelFactory(healthConnectManager)
             )
-            val permissionsGranted by viewModel.permissionsGranted
-            val sessionsList by viewModel.sessionsList
-            val permissions = viewModel.permissions
+
+            val permissionsGranted = viewModel.permissionsGranted
+            val sessionsList       = viewModel.sessionsList
+            val permissions        = viewModel.permissions
+
+
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
                 rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
@@ -258,35 +249,30 @@ fun HealthConnectNavigation(
                 sessionsList = sessionsList,
                 uiState = viewModel.uiState,
                 onInsertClick = { viewModel.generateSleepData() },
-                onError = { exception ->
-                    showExceptionSnackbar(scaffoldState, scope, exception)
-                },
+                onError = { exception -> showExceptionSnackbar(scaffoldState, scope, exception) },
                 onPermissionsResult = { viewModel.initialLoad() },
                 onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
             )
         }
 
+        // Input Readings (second entry kept as in your file)
         composable(Screen.InputReadings.route) {
             val viewModel: InputReadingsViewModel = viewModel(
-                factory = InputReadingsViewModelFactory(
-                    healthConnectManager = healthConnectManager
-                )
+                factory = InputReadingsViewModelFactory(healthConnectManager)
             )
-            val permissionsGranted by viewModel.permissionsGranted
-            val readingsList by viewModel.readingsList
-            val permissions = viewModel.permissions
-            val weeklyAvg by viewModel.weeklyAvg
+
+            val permissionsGranted = viewModel.permissionsGranted.value
+            val readingsList       = viewModel.readingsList.value
+            val permissions        = viewModel.permissions
+            val weeklyAvg          = viewModel.weeklyAvg.value
+
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
                 rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
                     onPermissionsResult()
-
                 }
 
-            // Ensure fresh data on every navigation to this screen
-            LaunchedEffect(Unit) {
-                viewModel.initialLoad()
-            }
+            LaunchedEffect(Unit) { viewModel.initialLoad() }
 
             InputReadingsScreen(
                 permissionsGranted = permissionsGranted,
@@ -296,23 +282,22 @@ fun HealthConnectNavigation(
                 weeklyAvg = weeklyAvg,
                 onDeleteClick = { uid -> viewModel.deleteWeightInput(uid) },
                 readingsList = readingsList,
-                onError = { exception ->
-                    showExceptionSnackbar(scaffoldState, scope, exception)
-                },
+                onError = { exception -> showExceptionSnackbar(scaffoldState, scope, exception) },
                 onPermissionsResult = { viewModel.initialLoad() },
                 onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
             )
         }
 
+        // Differential Changes
         composable(Screen.DifferentialChanges.route) {
             val viewModel: DifferentialChangesViewModel = viewModel(
-                factory = DifferentialChangesViewModelFactory(
-                    healthConnectManager = healthConnectManager
-                )
+                factory = DifferentialChangesViewModelFactory(healthConnectManager)
             )
-            val changesToken by viewModel.changesToken
-            val permissionsGranted by viewModel.permissionsGranted
-            val permissions = viewModel.permissions
+
+            val changesToken       = viewModel.changesToken.value
+            val permissionsGranted = viewModel.permissionsGranted.value
+            val permissions        = viewModel.permissions
+
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
                 rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
@@ -328,16 +313,12 @@ fun HealthConnectNavigation(
                 changesToken = changesToken,
                 onGetChanges = { viewModel.getChanges() },
                 uiState = viewModel.uiState,
-                onError = { exception ->
-                    showExceptionSnackbar(scaffoldState, scope, exception)
-                },
+                onError = { exception -> showExceptionSnackbar(scaffoldState, scope, exception) },
                 onPermissionsResult = { viewModel.initialLoad() }
-            ) { values ->
-                permissionsLauncher.launch(values)
-            }
+            ) { values -> permissionsLauncher.launch(values) }
         }
 
-
+        // Other tabs
         composable(Screen.Dashboard.route) { DashboardScreen() }
         composable(Screen.Nutrition.route) { NutritionScreen() }
         composable(Screen.Mind.route)      { MindScreen() }

@@ -1,38 +1,42 @@
+@file:Suppress("unused")
+
 package com.example.myhealth.presentation.screen.sleepsession
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.records.SleepSessionRecord
-import com.example.myhealth.R
 import com.example.myhealth.data.SleepSessionData
-import com.example.myhealth.presentation.theme.HealthConnectTheme
 import java.time.Duration
 import java.time.ZoneId
-import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+
+/* =========================================================================================
+ * Sleep sessions (Material 2) with a blue bottom bar (icons + labels).
+ * - BottomNavigation (blue background = theme primary, white content)
+ * - 3 tabs: Overview / Log / Stats
+ * - No "Generate sleep data" button on the UI (kept parameter, not shown)
+ * - Uses only sessionsList provided from ViewModel
+ * ========================================================================================= */
 
 @Composable
 fun SleepSessionScreen(
@@ -40,238 +44,254 @@ fun SleepSessionScreen(
     permissionsGranted: Boolean,
     sessionsList: List<SleepSessionData>,
     uiState: SleepSessionViewModel.UiState,
-    onInsertClick: () -> Unit = {},
-    onError: (Throwable?) -> Unit = {},
-    onPermissionsResult: () -> Unit = {},
-    onPermissionsLaunch: (Set<String>) -> Unit = {}
+    onInsertClick: () -> Unit,                // kept for compatibility, but NOT shown
+    onError: (Throwable?) -> Unit,
+    onPermissionsResult: () -> Unit,
+    onPermissionsLaunch: (Set<String>) -> Unit
 ) {
-    val errorId = rememberSaveable { mutableStateOf(UUID.randomUUID()) }
-
-    // Handle initialization and error updates
+    // Error one-shot handler (same logic as before)
+    val lastErrorId = remember { mutableStateOf(UUID.randomUUID()) }
     LaunchedEffect(uiState) {
         if (uiState is SleepSessionViewModel.UiState.Uninitialized) onPermissionsResult()
-        if (uiState is SleepSessionViewModel.UiState.Error && errorId.value != uiState.uuid) {
+        if (uiState is SleepSessionViewModel.UiState.Error && lastErrorId.value != uiState.uuid) {
             onError(uiState.exception)
-            errorId.value = uiState.uuid
+            lastErrorId.value = uiState.uuid
         }
     }
 
-    if (uiState != SleepSessionViewModel.UiState.Uninitialized) {
-        val expandedUid = rememberSaveable { mutableStateOf<String?>(null) }
+    // Bottom bar state
+    var selected by remember { mutableStateOf(0) }
+    val tabs = listOf(
+        NavItem("Overview", Icons.Filled.Home),
+        NavItem("Log", Icons.Filled.List),
+        NavItem("Stats", Icons.Filled.BarChart)
+    )
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Top,
+    Scaffold(
+        bottomBar = {
+            BottomNavigation(
+                backgroundColor = MaterialTheme.colors.primary,
+                contentColor = Color.White,
+                elevation = 10.dp
+            ) {
+                tabs.forEachIndexed { index, item ->
+                    BottomNavigationItem(
+                        selected = selected == index,
+                        onClick = { selected = index },
+                        icon = { Icon(item.icon, contentDescription = item.label, tint = Color.White) },
+                        label = { Text(item.label, color = Color.White) },
+                        selectedContentColor = Color.White,
+                        unselectedContentColor = Color.White.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+    ) { inner ->
+        // Main content
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(inner)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            // (Optional) permission button hidden by requirement; if you want it back, uncomment:
+            // if (!permissionsGranted) {
+            //     OutlinedButton(
+            //         onClick = { onPermissionsLaunch(permissions) },
+            //         modifier = Modifier.fillMaxWidth().height(44.dp)
+            //     ) { Text("Grant permissions") }
+            //     Spacer(Modifier.height(8.dp))
+            // }
+
+            when (selected) {
+                0 -> SleepOverviewTab(sessionsList)
+                1 -> SleepLogTab(sessionsList)
+                2 -> SleepStatsTab(sessionsList)
+            }
+        }
+    }
+}
+
+/* --------------------------------- Overview ---------------------------------- */
+
+@Composable
+private fun SleepOverviewTab(sessions: List<SleepSessionData>) {
+    val today = sessions.maxByOrNull { it.endTime } // simple "latest" as today summary
+    val totalWeekHours = sessions
+        .take(7)
+        .sumOf { (it.duration ?: Duration.ZERO).toHours().toInt().coerceAtLeast(0) }
+
+    Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Today", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            if (today != null) {
+                val d = today.duration ?: Duration.ZERO
+                Text("${formatHhMm(d)}  •  Stages: ${today.stages.size}")
+            } else {
+                Text("No sleep recorded")
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("Weekly summary", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Text("$totalWeekHours h in last 7 sessions")
+        }
+    }
+}
+
+/* ----------------------------------- Log ------------------------------------- */
+
+@Composable
+private fun SleepLogTab(sessions: List<SleepSessionData>) {
+    val fmtTime = remember { DateTimeFormatter.ofPattern("HH:mm") }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 6.dp)
+    ) {
+        items(sessions, key = { it.uid }) { s ->
+            var expanded by remember { mutableStateOf(false) }
+
+            Card(
+                elevation = 3.dp,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+            ) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = formatHhMm(s.duration ?: Duration.ZERO),
+                                style = MaterialTheme.typography.h6,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val startLocal = s.startTime.atZone(ZoneId.systemDefault()).format(fmtTime)
+                            val endLocal = s.endTime.atZone(ZoneId.systemDefault()).format(fmtTime)
+                            Text("$startLocal – $endLocal", color = Color.Gray)
+                        }
+                        Text(
+                            if (expanded) "Hide" else "Details",
+                            color = MaterialTheme.colors.primary,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+
+                    AnimatedVisibility(visible = expanded) {
+                        Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                            Divider()
+                            Spacer(Modifier.height(8.dp))
+                            Text("Notes: ${s.notes ?: "—"}")
+                            Spacer(Modifier.height(6.dp))
+                            Text("Stages", fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(6.dp))
+                            // Simple stage bar without Canvas to avoid theme color issues
+                            StageTimelineBarSimple(s.stages, height = 10.dp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* ----------------------------------- Stats ----------------------------------- */
+
+@Composable
+private fun SleepStatsTab(sessions: List<SleepSessionData>) {
+    val total = sessions.size
+    val avgMinutes = if (total > 0) {
+        sessions.map { (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0) }
+            .average()
+            .toInt()
+    } else 0
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            StatPill("Avg duration", "${avgMinutes / 60}h${avgMinutes % 60}m")
+            StatPill("Sessions", "$total")
+        }
+        // You can plug your chart here later; keep it simple & safe for now
+        Card(elevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Tip", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Text("Try to keep your bedtime and wake-up time consistent.")
+            }
+        }
+    }
+}
+
+/* ------------------------------ Small pieces ------------------------------- */
+
+private data class NavItem(val label: String, val icon: ImageVector)
+
+@Composable
+private fun StatPill(title: String, value: String) {
+    Surface(
+        shape = CircleShape,
+        elevation = 2.dp
+    ) {
+        Column(
+            Modifier
+                .widthIn(min = 120.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (!permissionsGranted) {
-                item {
-                    Button(onClick = { onPermissionsLaunch(permissions) }) {
-                        Text(text = stringResource(R.string.permissions_button_label))
-                    }
-                }
-            } else {
-                item {
-                    OutlinedButton(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .padding(8.dp),
-                        onClick = onInsertClick
-                    ) {
-                        Text(stringResource(id = R.string.generate_sleep_data))
-                    }
-                }
-
-                items(sessionsList, key = { it.uid }) { session ->
-                    SleepSessionItem(
-                        session = session,
-                        expanded = expandedUid.value == session.uid,
-                        onToggle = {
-                            expandedUid.value =
-                                if (expandedUid.value == session.uid) null else session.uid
-                        }
-                    )
-                }
-            }
+            Text(value, fontWeight = FontWeight.Bold)
+            Text(title, style = MaterialTheme.typography.caption, color = Color.Gray)
         }
     }
 }
 
+/**
+ * A very safe stage timeline (no Canvas/MaterialTheme color copy chain).
+ * Each stage becomes a weighted Box with a fixed color.
+ */
 @Composable
-private fun SleepSessionItem(
-    session: SleepSessionData,
-    expanded: Boolean,
-    onToggle: () -> Unit
-) {
-    Card(
-        modifier = Modifier
+private fun StageTimelineBarSimple(stages: List<SleepSessionRecord.Stage>, height: Dp) {
+    val totalMinutes = stages.sumOf {
+        Duration.between(it.startTime, it.endTime).toMinutes().toInt().coerceAtLeast(1)
+    }.coerceAtLeast(1)
+
+    Row(
+        Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clickable { onToggle() },
-        elevation = 3.dp,
-        shape = RoundedCornerShape(16.dp)
+            .height(height)
+            .background(Color(0x14000000), shape = CircleShape)
+            .padding(1.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                    contentDescription = null,
-                    tint = Color(0xFF00796B),
-                    modifier = Modifier.size(40.dp)
-                )
-
-                Spacer(Modifier.width(12.dp))
-
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = formatDuration(session.duration),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    // Display time in local timezone
-                    val startLocal = session.startTime
-                        .atZone(ZoneId.systemDefault())
-                        .format(timeFmt)
-                    val endLocal = session.endTime
-                        .atZone(ZoneId.systemDefault())
-                        .format(timeFmt)
-                    Text(
-                        text = "$startLocal - $endLocal",
-                        fontSize = 14.sp,
-                        color = Color.Gray
-                    )
-                }
-
-                IconButton(onClick = onToggle) {
-                    Icon(
-                        imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = null
-                    )
-                }
-            }
-
-            AnimatedVisibility(visible = expanded) {
-                Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    Divider()
-                    Spacer(Modifier.height(8.dp))
-                    Text("Notes: ${session.notes ?: "No notes"}", fontSize = 14.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Text("Sleep stages:", fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-
-                    session.stages.take(8).forEach { s ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val localTime = s.startTime
-                                .atZone(ZoneId.systemDefault())
-                                .format(timeFmt)
-                            Text(text = localTime, fontSize = 13.sp)
-
-                            Surface(
-                                color = stageColor(s.stage),
-                                shape = RoundedCornerShape(10.dp),
-                                elevation = 0.dp
-                            ) {
-                                Text(
-                                    text = stageLabel(s.stage),
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+        stages.forEachIndexed { i, s ->
+            val mins = Duration.between(s.startTime, s.endTime).toMinutes().toInt().coerceAtLeast(1)
+            val weight = mins / totalMinutes.toFloat()
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .weight(weight)
+                    .background(stageColor(s.stage), shape = CircleShape)
+            )
+            if (i != stages.lastIndex) Spacer(Modifier.width(2.dp))
         }
     }
 }
 
-private fun formatDuration(duration: Duration?): String {
-    val d = duration ?: Duration.ZERO
-    val hours = d.toHours()
-    val minutes = d.toMinutesPart()
-    return "${hours}h${minutes}m"
+private fun stageColor(stage: Int): Color = when (stage) {
+    SleepSessionRecord.STAGE_TYPE_AWAKE -> Color(0xFFF6A13E)
+    SleepSessionRecord.STAGE_TYPE_LIGHT -> Color(0xFF42A5F5)
+    SleepSessionRecord.STAGE_TYPE_DEEP  -> Color(0xFF26A69A)
+    SleepSessionRecord.STAGE_TYPE_REM   -> Color(0xFF7E57C2)
+    else -> Color.LightGray
 }
 
-private fun stageLabel(stage: Int): String = when (stage) {
-    SleepSessionRecord.STAGE_TYPE_AWAKE -> "Awake"
-    SleepSessionRecord.STAGE_TYPE_LIGHT -> "Light"
-    SleepSessionRecord.STAGE_TYPE_DEEP  -> "Deep"
-    SleepSessionRecord.STAGE_TYPE_REM   -> "REM"
-    else -> "Unknown"
-}
-
-@Composable
-private fun stageColor(stage: Int) = when (stage) {
-    SleepSessionRecord.STAGE_TYPE_AWAKE -> MaterialTheme.colors.secondary
-    SleepSessionRecord.STAGE_TYPE_LIGHT -> MaterialTheme.colors.primary.copy(alpha = 0.65f)
-    SleepSessionRecord.STAGE_TYPE_DEEP  -> MaterialTheme.colors.primary
-    SleepSessionRecord.STAGE_TYPE_REM   -> MaterialTheme.colors.error.copy(alpha = 0.85f)
-    else -> MaterialTheme.colors.onSurface.copy(alpha = 0.4f)
-}
-
-private val timeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
-@Preview
-@Composable
-fun SleepSessionScreenPreview() {
-    HealthConnectTheme {
-        val end2 = ZonedDateTime.now()
-        val start2 = end2.minusHours(5)
-        val end1 = end2.minusDays(1)
-        val start1 = end1.minusHours(5)
-        SleepSessionScreen(
-            permissions = setOf(),
-            permissionsGranted = true,
-            sessionsList = listOf(
-                SleepSessionData(
-                    uid = "123",
-                    title = "My sleep",
-                    notes = "Slept well",
-                    startTime = start1.toInstant(),
-                    startZoneOffset = start1.offset,
-                    endTime = end1.toInstant(),
-                    endZoneOffset = end1.offset,
-                    duration = Duration.between(start1, end1),
-                    stages = listOf(
-                        SleepSessionRecord.Stage(
-                            stage = SleepSessionRecord.STAGE_TYPE_DEEP,
-                            startTime = start1.toInstant(),
-                            endTime = end1.toInstant()
-                        )
-                    )
-                ),
-                SleepSessionData(
-                    uid = "124",
-                    title = "My sleep",
-                    notes = "Slept great",
-                    startTime = start2.toInstant(),
-                    startZoneOffset = start2.offset,
-                    endTime = end2.toInstant(),
-                    endZoneOffset = end2.offset,
-                    duration = Duration.between(start2, end2),
-                    stages = listOf(
-                        SleepSessionRecord.Stage(
-                            stage = SleepSessionRecord.STAGE_TYPE_REM,
-                            startTime = start2.toInstant(),
-                            endTime = end2.toInstant()
-                        )
-                    )
-                )
-            ),
-            uiState = SleepSessionViewModel.UiState.Done
-        )
-    }
+private fun formatHhMm(d: Duration): String {
+    val totalMin = d.toMinutes().toInt().coerceAtLeast(0)
+    val h = totalMin / 60
+    val m = totalMin % 60
+    return "${h}h${m}m"
 }

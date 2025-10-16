@@ -3,33 +3,17 @@ package com.example.myhealth.presentation.screen.mind
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Card
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Scaffold
-import androidx.compose.material.Switch
-import androidx.compose.material.Text
-import androidx.compose.material.TextButton
-import androidx.compose.material.TopAppBar
+import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack   // ← import back icon
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Settings   // ← import settings icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,6 +28,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun MindOverviewScreen(
+    onOpenState: () -> Unit,         // navigate to MindStateScreen
+    onOpenTimeSettings: () -> Unit,  // open system time picker
+    onBack: () -> Unit,              // popBackStack
     vm: MindViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
             LocalContext.current.applicationContext as Application
@@ -59,26 +46,33 @@ fun MindOverviewScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                backgroundColor = Color.White,
+                elevation = 0.dp,
                 title = { Text("Mindfulness") },
-                actions = {
-                    IconButton(onClick = { /* open insights */ }) {
-                        Icon(Icons.Filled.Timeline, contentDescription = null)
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
-                    IconButton(onClick = { /* open settings */ }) {
-                        Icon(Icons.Filled.Settings, contentDescription = null)
+                },
+                actions = {
+                    // Keep only Settings icon (open time picker) — removed Timeline. :contentReference[oaicite:1]{index=1}
+                    IconButton(onClick = onOpenTimeSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Set reminder time")
                     }
                 }
             )
-        }
+        },
+        backgroundColor = Color.White
     ) { inner ->
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(inner)
-                .padding(16.dp),
+                .padding(16.dp)
+                .background(Color.White),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Today card
+            // Today card (kept from your original structure) :contentReference[oaicite:2]{index=2}
             Card(elevation = 4.dp) {
                 Row(
                     Modifier.padding(12.dp),
@@ -115,7 +109,7 @@ fun MindOverviewScreen(
                 }
             }
 
-            // Quick actions
+            // Quick actions (kept) :contentReference[oaicite:3]{index=3}
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -141,18 +135,17 @@ fun MindOverviewScreen(
                     subtitle = "schedule",
                     icon = Icons.Filled.Event,
                     tint = Color(0xFF7C4DFF),
-                    onClick = { /* open planner */ },
+                    onClick = onOpenTimeSettings, // reuse time picker
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            // Mood inline picker
+            // Mood inline picker (your original inline UI; no external MoodPicker) :contentReference[oaicite:4]{index=4}
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Mood check-in", style = MaterialTheme.typography.subtitle1)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Kotlin 1.9 建议使用 entries()
                         for (m in enumValues<Mood>()) {
                             val selected = (mood == m)
                             Column(
@@ -179,13 +172,13 @@ fun MindOverviewScreen(
                 }
             }
 
-            // 7-day trend (mini bars)
+            // 7-day trend (Details navigates to State) :contentReference[oaicite:5]{index=5}
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("7-day trend", style = MaterialTheme.typography.subtitle1)
                         Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { /* open detailed analytics */ }) {
+                        TextButton(onClick = onOpenState) {
                             Text("Details")
                         }
                     }
@@ -194,7 +187,7 @@ fun MindOverviewScreen(
                 }
             }
 
-            // Guided carousel (demo items)
+            // Guided sessions (each starts then go to State) :contentReference[oaicite:6]{index=6}
             val sessions = listOf(
                 MindSession("s1", "Box Breathing", 3, "focus", Color(0xFF26C6DA)),
                 MindSession("s2", "Body Scan", 5, "relax", Color(0xFF7C4DFF)),
@@ -207,7 +200,10 @@ fun MindOverviewScreen(
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(sessions) { s ->
-                            GuidedChip(s = s, onStart = { vm.addSession(s.mins, s.tag) })
+                            GuidedChip(s = s, onStart = {
+                                vm.addSession(s.mins, s.tag)
+                                onOpenState()
+                            })
                         }
                     }
                 }

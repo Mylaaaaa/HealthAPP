@@ -36,6 +36,30 @@ import com.example.myhealth.presentation.screen.sleepsession.SleepSessionViewMod
 import com.example.myhealth.presentation.screen.mind.MindScreen
 import com.example.myhealth.showExceptionSnackbar
 import kotlinx.coroutines.launch
+import android.app.TimePickerDialog
+import android.content.Context
+import com.example.myhealth.presentation.screen.mind.MindRootScreen
+import java.util.*
+import androidx.compose.ui.platform.LocalContext
+
+
+fun showTimePicker(context: Context) {
+    val calendar = Calendar.getInstance()
+    val hour = calendar.get(Calendar.HOUR_OF_DAY)
+    val minute = calendar.get(Calendar.MINUTE)
+
+    TimePickerDialog(
+        context,
+        { _, selectedHour, selectedMinute ->
+            // TODO: Handle selected time here
+            println("Selected time: $selectedHour:$selectedMinute")
+        },
+        hour,
+        minute,
+        true
+    ).show()
+}
+
 
 /**
  * App navigation graph.
@@ -319,7 +343,15 @@ fun HealthConnectNavigation(
             com.example.myhealth.presentation.screen.nutrition.NutritionRootScreen()
         }
         composable(Screen.Mind.route) {
-            com.example.myhealth.presentation.screen.mind.MindRootScreen()
+            val context = LocalContext.current
+            MindRootScreen(
+                onBack = { navController.popBackStack() },
+                onOpenTimeSettings = {
+                    showTimePicker(context)
+                }
+            )
+
+
         }
     }
 }

@@ -93,6 +93,7 @@ fun HealthConnectApp(healthConnectManager: HealthConnectManager) {
                             Screen.InputReadings.route -> Screen.InputReadings.titleId
                             Screen.DifferentialChanges.route -> Screen.DifferentialChanges.titleId
                             Screen.WeightRecords.route -> Screen.WeightRecords.titleId
+                            Screen.Nutrition.route -> Screen.Nutrition.titleId
                             else -> R.string.app_name
                         }
                         Text(stringResource(titleId))
@@ -122,8 +123,10 @@ fun HealthConnectApp(healthConnectManager: HealthConnectManager) {
                             }
                         }
                     }
+
                 )
             },
+
             drawerContent = {
                 if (availability == SDK_AVAILABLE) {
                     Drawer(

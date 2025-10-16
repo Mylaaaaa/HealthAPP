@@ -55,22 +55,30 @@ fun NutritionScreen(
             date.year, date.monthValue - 1, date.dayOfMonth
         )
     }
+    LaunchedEffect(Unit) {
+        vm.openDatePicker.collect {
+            datePicker.show()
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                backgroundColor = MaterialTheme.colors.primary,
-                contentColor = MaterialTheme.colors.onPrimary,
-                elevation = 4.dp,
                 title = {
-                    Text("Nutrition Tracker", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 },
                 actions = {
                     IconButton(onClick = { datePicker.show() }) {
-                        Icon(Icons.Default.Today, contentDescription = "Pick date", tint = MaterialTheme.colors.onPrimary)
+                        Icon(
+                            Icons.Default.Today,
+                            contentDescription = "Pick date",
+                            tint = MaterialTheme.colors.onSurface
+                        )
                     }
-                }
+                },
+                backgroundColor = Color.White,
+                elevation = 0.dp
             )
+
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { preselectFood = null; showAdd = true }) {

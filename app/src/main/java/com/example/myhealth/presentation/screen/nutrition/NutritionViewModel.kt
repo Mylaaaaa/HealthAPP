@@ -1,5 +1,6 @@
 package com.example.myhealth.presentation.screen.nutrition
-
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +19,13 @@ class NutritionViewModel(app: Application) : AndroidViewModel(app) {
     private val _date = MutableStateFlow(LocalDate.now())
     val date: StateFlow<LocalDate> = _date.asStateFlow()
 
+    // Expose a one-shot event to request opening the date picker from the app bar
+    private val _openDatePicker = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val openDatePicker: SharedFlow<Unit> = _openDatePicker
+
+    fun requestOpenDatePicker() {
+        _openDatePicker.tryEmit(Unit)
+    }
     val meals: StateFlow<List<MealEntryWithFood>> =
         date.flatMapLatest { d -> repo.observeMeals(d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

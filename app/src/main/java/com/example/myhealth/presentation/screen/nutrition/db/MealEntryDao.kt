@@ -18,4 +18,15 @@ interface MealEntryDao {
 
     @Query("DELETE FROM meal_entries WHERE id = :id")
     suspend fun deleteById(id: Long)
+    @Transaction
+    @Query("""
+        SELECT * FROM meal_entries 
+        JOIN foods ON foods.code = meal_entries.foodCode
+        WHERE date BETWEEN :start AND :end
+        ORDER BY date ASC, meal_entries.id ASC
+    """)
+    fun observeBetween(
+        start: LocalDate,
+        end: LocalDate
+    ): Flow<List<MealEntryWithFood>>
 }

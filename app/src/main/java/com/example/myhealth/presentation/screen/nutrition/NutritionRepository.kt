@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import java.time.LocalDate
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.first
 
 class NutritionRepository(
     private val foodDao: FoodDao,
@@ -101,4 +102,17 @@ class NutritionRepository(
         }
     }
 
+// -------- Range queries for weekly analysis --------
+    /**
+     * Returns all meals between [start] and [end] inclusive, grouped by LocalDate.
+     * This method relies on MealEntryDao.getBetween(start, end).
+     */
+    suspend fun getMealsBetweenGroupedByDate(
+        start: LocalDate,
+        end: LocalDate
+    ): Map<LocalDate, List<MealEntryWithFood>> {
+        // Pull once from Flow
+        val list: List<MealEntryWithFood> = entryDao.observeBetween(start, end).first()
+        return list.groupBy { it.entry.date }
+    }
 }

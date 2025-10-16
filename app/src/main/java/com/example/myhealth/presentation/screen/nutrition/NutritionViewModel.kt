@@ -10,6 +10,8 @@ import com.example.myhealth.presentation.screen.nutrition.db.NutritionDatabase
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class NutritionViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -58,6 +60,39 @@ class NutritionViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeCondition(id: Long) =
         viewModelScope.launch { repo.removeCondition(id) }
+
+    // ---------------- Targets (temporary defaults; you can later load from settings) ----------------
+    data class MacroTargets(val p: Float, val c: Float, val f: Float)
+    val kcalGoal = MutableStateFlow(2000)
+    val macroTargets = MutableStateFlow(MacroTargets(p = 120f, c = 250f, f = 60f))
+
+    // ---------------- Weekly totals for last 7 days ----------------
+    data class DailyTotals(val date: LocalDate, val t: NutritionRepository.Totals)
+
+    private val _weeklyTotals = MutableStateFlow<List<DailyTotals>>(emptyList())
+    val weeklyTotals: StateFlow<List<DailyTotals>> = _weeklyTotals.asStateFlow()
+
+    /**
+     * Loads totals for the last 7 days ending at [center] (inclusive).
+     * Requires NutritionRepository.getMealsBetweenGroupedByDate().
+     */
+    fun loadWeeklyTotals(center: LocalDate = date.value) = viewModelScope.launch {
+        val end = center
+        val start = end.minusDays(6)
+
+        // DB access on IO
+        val list: List<DailyTotals> = withContext(Dispatchers.IO) {
+            val mealsByDay = repo.getMealsBetweenGroupedByDate(start, end)
+            (0..6).map { i ->
+                val d = start.plusDays(i.toLong())
+                val t = repo.totals(mealsByDay[d].orEmpty())
+                DailyTotals(date = d, t = t)
+            }
+        }
+
+        // publish on Main
+        _weeklyTotals.value = list
+    }
 
     init {
         // Seed foods when table is empty so the Add dialog is never blank

@@ -1,5 +1,6 @@
 package com.example.myhealth.presentation.screen.mind
-
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.app.Application
 import android.app.DatePickerDialog
 import androidx.compose.foundation.background
@@ -90,8 +91,13 @@ fun MindOverviewScreen(
         backgroundColor = Color.White
     ) { inner ->
         Column(
-            Modifier.fillMaxSize().padding(inner).padding(16.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(inner)
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
+
         ) {
             // Today summary
             Card(elevation = 4.dp) {

@@ -1,5 +1,6 @@
 package com.example.myhealth.presentation.screen.mind
-
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -60,7 +61,11 @@ fun MindStateScreen(
         backgroundColor = Color.White
     ) { inner ->
         Column(
-            Modifier.fillMaxSize().padding(inner).padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(inner)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Section(title = "Summary", containerColor = cSummary) {

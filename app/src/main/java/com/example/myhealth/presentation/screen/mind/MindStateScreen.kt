@@ -2,43 +2,38 @@ package com.example.myhealth.presentation.screen.mind
 
 import android.app.Application
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Card
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Scaffold
-import androidx.compose.material.Text
-import androidx.compose.material.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+/**
+ * MindStateScreen
+ *
+ * - White TopAppBar (no blue secondary bar).
+ * - REMOVED the inline date quick bar.
+ * - RESTORED the original insight blocks:
+ *   Summary, Adherence & Streak, Trends & Comparison, Mood distribution, Insights.
+ */
 @Composable
 fun MindStateScreen(
+    onBack: () -> Unit = {},
     vm: MindViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
             LocalContext.current.applicationContext as Application
         )
     )
 ) {
-    val today by vm.today.collectAsState()
     val todayMinutes by vm.todayMinutes.collectAsState()
     val weekly by vm.weeklyMinutes.collectAsState()
     val streak by vm.streakDays.collectAsState()
@@ -49,7 +44,21 @@ fun MindStateScreen(
     val adherenceDays = weekly.count { it > 0 }
     val adherencePct = if (weekly.isEmpty()) 0 else (adherenceDays * 100 / 7)
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Mindfulness • State") }) }) { inner ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Mindfulness • State") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                backgroundColor = Color.White,
+                elevation = 0.dp
+            )
+        },
+        backgroundColor = Color.White
+    ) { inner ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -63,7 +72,7 @@ fun MindStateScreen(
                     Text("Summary", style = MaterialTheme.typography.subtitle1)
                     Text("Today: $todayMinutes / 10 min")
                     Text("This week: $weekSum / $weekGoal min")
-                    Text("This month: (hook monthly query later)")
+                    Text("Streak: $streak days")
                 }
             }
 
@@ -71,46 +80,41 @@ fun MindStateScreen(
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Adherence & Streak", style = MaterialTheme.typography.subtitle1)
-                    Text("Streak: $streak days")
                     Text("Adherence: $adherenceDays / 7 days ($adherencePct%)")
-                    Text("Best day: ${bestDay(weekly)}")
+                    Text("Best day: " + bestDayLabel(weekly) + " (${weekly.maxOrNull() ?: 0} min)")
                 }
             }
 
-            // Trend compare
-            val lastWeek = remember(weekly, today) {
-                // For demo: derive a baseline; replace with real DAO query if需要
-                weekly.map { (it * 0.82).toInt() }
-            }
+            // Trends & Comparison
             Card(elevation = 4.dp) {
-                Column(Modifier.padding(12.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Trends & Comparison", style = MaterialTheme.typography.subtitle1)
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Column(Modifier.weight(1f)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("This week")
-                            BarMiniChart(weekly.map { it.toFloat() })
+                            Spacer(Modifier.height(8.dp))
+                            MiniBar(height = weekly.takeLast(1).firstOrNull() ?: 0)
                         }
-                        Column(Modifier.weight(1f)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("Last week")
-                            BarMiniChart(lastWeek.map { it.toFloat() })
+                            Spacer(Modifier.height(8.dp))
+                            MiniBar(height = weekly.dropLast(1).lastOrNull() ?: 0)
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    val delta = pctDelta(weekly.sum(), lastWeek.sum())
-                    Text("Week over week: ${if (delta >= 0) "+" else ""}$delta%")
+                    val wow = weekOverWeekPct(weekly)
+                    Text("Week over week: ${if (wow >= 0) "+" else ""}$wow%")
                 }
             }
 
-            // Mood distribution
+            // Mood distribution (7d)
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Mood distribution (7d)", style = MaterialTheme.typography.subtitle1)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         moodDist.forEach { (m, count) ->
+                            val total = moodDist.values.sum().coerceAtLeast(1)
+                            val pct = (count * 100 / total)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                val total = moodDist.values.sum().coerceAtLeast(1)
-                                val pct = (count * 100 / total)
                                 Box(
                                     modifier = Modifier
                                         .size(24.dp)
@@ -118,36 +122,49 @@ fun MindStateScreen(
                                         .background(m.tint.copy(alpha = 0.18f))
                                 )
                                 Spacer(Modifier.height(4.dp))
-                                Text("${m.glyph} ${pct}%", style = MaterialTheme.typography.caption)
+                                Text("${m.glyph} ${pct}%", style = MaterialTheme.typography.body2)
                             }
                         }
                     }
                 }
             }
 
-            // Insights
+            // Insights & Suggestions (simple static hints for now)
             Card(elevation = 4.dp) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.padding(12.dp)) {
                     Text("Insights & Suggestions", style = MaterialTheme.typography.subtitle1)
                     Text("• Weekdays look stronger; try short 3-min sessions on weekends.")
-                    Text("• Night reminder ~9:30 PM seems to work.")
-                    Text("• Aim 10 min/day to extend streak.")
                 }
             }
         }
     }
 }
 
-/* helpers */
-
-private fun bestDay(weekly: List<Int>): String {
-    if (weekly.isEmpty()) return "-"
-    val idx = weekly.indices.maxByOrNull { weekly[it] } ?: 0
-    val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-    return "${names[idx]} (${weekly[idx]} min)"
+/** Draws a small vertical bar used for comparison blocks. */
+@Composable
+private fun MiniBar(height: Int) {
+    Box(
+        modifier = Modifier
+            .width(18.dp)
+            .height((height * 2).coerceAtLeast(8).dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colors.primary)
+    )
 }
 
-private fun pctDelta(a: Int, b: Int): Int {
-    if (b <= 0) return 0
-    return (((a - b) * 100f) / b).toInt()
+/** Best day label from a 7-day array (Mon..Sun). */
+private fun bestDayLabel(weekly: List<Int>): String {
+    if (weekly.isEmpty()) return "—"
+    val idx = weekly.indexOf(weekly.maxOrNull() ?: 0)
+    val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    return names.getOrElse(idx) { "—" }
+}
+
+/** Simple WoW percentage based on last two buckets. */
+private fun weekOverWeekPct(weekly: List<Int>): Int {
+    if (weekly.size < 2) return 0
+    val last = weekly.last()
+    val prev = weekly.dropLast(1).lastOrNull() ?: 0
+    if (prev == 0) return if (last == 0) 0 else 100
+    return ((last - prev) * 100f / prev).toInt()
 }

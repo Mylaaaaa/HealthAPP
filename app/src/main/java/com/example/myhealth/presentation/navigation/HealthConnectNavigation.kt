@@ -344,9 +344,7 @@ fun HealthConnectNavigation(
         }
         composable(Screen.Mind.route) {
             val context = LocalContext.current
-            MindRootScreen(
-                onBack = { navController.popBackStack() }
-            )
+            MindRootScreen()
         }
     }
 }

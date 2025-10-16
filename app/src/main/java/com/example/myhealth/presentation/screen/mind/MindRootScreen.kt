@@ -1,13 +1,13 @@
 package com.example.myhealth.presentation.screen.mind
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.Modifier
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -18,89 +18,84 @@ import androidx.navigation.navArgument
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-private const val ROUTE_MIND_OVERVIEW = "mind_overview"
-private const val ROUTE_MIND_STATE = "mind_state"
-private const val ROUTE_MIND_SESSION = "mind_session?title={title}&mins={mins}"
-private const val ROUTE_MIND_SETTINGS = "mind_settings"
-
 /**
- * Root with 2 tabs + 2 extra destinations:
- * - Overview / State tabs stay the same.
- * - Added:
- *   • mind_session: dedicated guided session/timer screen
- *   • mind_settings: date settings screen (calendar + quick chips)
+ * MindRootScreen
+ *
+ * Hosts the Mind feature:
+ *  - Overview (dashboard)
+ *  - State (analytics)
+ *  - SessionTimer (guided practice timer)
+ *
+ * No external parameters needed; this function owns its NavController.
  */
 @Composable
-fun MindRootScreen(
-    onBack: () -> Unit
-) {
+fun MindRootScreen() {
     val nav = rememberNavController()
     val current by nav.currentBackStackEntryAsState()
 
     Scaffold(
         backgroundColor = Color.White,
         bottomBar = {
-            BottomNavigation {
+            BottomNavigation(backgroundColor = MaterialTheme.colors.primary) {
                 BottomNavigationItem(
-                    selected = current?.destination?.route?.startsWith(ROUTE_MIND_OVERVIEW) == true,
+                    selected = current?.destination?.route == "mind_overview",
                     onClick = {
-                        nav.navigate(ROUTE_MIND_OVERVIEW) {
+                        nav.navigate("mind_overview") {
                             launchSingleTop = true
-                            popUpTo(ROUTE_MIND_OVERVIEW) { inclusive = false }
+                            popUpTo("mind_overview") { inclusive = false }
                         }
                     },
-                    icon = { Icon(Icons.Filled.Psychology, contentDescription = null) },
-                    label = { Text("Overview") }
+                    icon = { Icon(Icons.Filled.Psychology, contentDescription = "Overview") },
+                    label = { Text("Overview") },
+                    selectedContentColor = Color.White,
+                    unselectedContentColor = Color.White.copy(alpha = 0.6f)
                 )
                 BottomNavigationItem(
-                    selected = current?.destination?.route?.startsWith(ROUTE_MIND_STATE) == true,
-                    onClick = { nav.navigate(ROUTE_MIND_STATE) { launchSingleTop = true } },
-                    icon = { Icon(Icons.Filled.Timeline, contentDescription = null) },
-                    label = { Text("State") }
+                    selected = current?.destination?.route == "mind_state",
+                    onClick = { nav.navigate("mind_state") { launchSingleTop = true } },
+                    icon = { Icon(Icons.Filled.Timeline, contentDescription = "State") },
+                    label = { Text("State") },
+                    selectedContentColor = Color.White,
+                    unselectedContentColor = Color.White.copy(alpha = 0.6f)
                 )
             }
         }
     ) { innerPadding ->
         NavHost(
             navController = nav,
-            startDestination = ROUTE_MIND_OVERVIEW,
+            startDestination = "mind_overview",
             modifier = Modifier.padding(innerPadding)
         ) {
-            // Overview (now opens session/settings pages)
-            composable(ROUTE_MIND_OVERVIEW) {
+            // Overview
+            composable("mind_overview") {
                 MindOverviewScreen(
+                    onBack = { nav.popBackStack() },
                     onOpenSession = { title, mins ->
-                        val t = URLEncoder.encode(title, StandardCharsets.UTF_8.name())
-                        nav.navigate("mind_session?title=$t&mins=$mins")
-                    },
-                    onOpenSettings = { nav.navigate(ROUTE_MIND_SETTINGS) },
-                    onBack = onBack
+                        val encoded = java.net.URLEncoder.encode(title, java.nio.charset.StandardCharsets.UTF_8.name())
+                        nav.navigate("mind_session_timer?title=$encoded&mins=$mins")
+                    }
                 )
             }
 
-            // State tab (unchanged)
-            composable(ROUTE_MIND_STATE) { MindStateScreen() }
 
-            // Guided session / timer
+            // State
+            composable("mind_state") {
+                MindStateScreen(onBack = { nav.popBackStack() })
+            }
+
+            // Guided session timer
             composable(
-                route = ROUTE_MIND_SESSION,
+                route = "mind_session_timer?title={title}&mins={mins}",
                 arguments = listOf(
                     navArgument("title") { type = NavType.StringType; defaultValue = "Session" },
                     navArgument("mins") { type = NavType.IntType; defaultValue = 3 }
                 )
-            ) { backStack ->
-                val title = backStack.arguments?.getString("title") ?: "Session"
-                val mins = backStack.arguments?.getInt("mins") ?: 3
-                MindSessionScreen(
+            ) { bs ->
+                val title = bs.arguments?.getString("title") ?: "Session"
+                val mins = bs.arguments?.getInt("mins") ?: 3
+                MindSessionTimerScreen(
                     title = title,
                     minutes = mins,
-                    onBack = { nav.popBackStack() }
-                )
-            }
-
-            // Date settings (calendar + quick choices)
-            composable(ROUTE_MIND_SETTINGS) {
-                MindReminderSettingsScreen(
                     onBack = { nav.popBackStack() }
                 )
             }

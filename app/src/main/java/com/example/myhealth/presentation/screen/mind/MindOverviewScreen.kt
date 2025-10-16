@@ -24,29 +24,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 import java.util.Calendar
 
 /**
- * MindOverviewScreen — Plan B (richer but focused)
+ * MindOverviewScreen — Enhanced Plan B (real Recent moods)
  *
- * What this screen contains:
- *  - White TopAppBar: back + "Mindfulness" + calendar icon (date picker).
- *  - "Today" summary with a small "Remaining" pill and a soft motivation line.
- *  - Quick Start row: a single one-tap 3-min breathing (auto-start).
- *  - Mood check-in row.
- *  - Recent moods: last 3 calendar days (today / yesterday / 2 days ago).
- *      NOTE: we reliably show today's mood; the other two fallback to "—"
- *      if historical mood lookup is not available in the current VM API.
- *  - Guided sessions: opens a config dialog (choose 3/5/10 min), then timer.
- *  - 7-day trend is NOT shown here (moved to State).
- *
- * Navigation contract (unchanged):
- *  - onOpenSession(title, mins, date, tag, autoStart)
- *      -> MindRootScreen already passes these to your timer route.
+ * - Uses vm.recentMoods3 for actual last-3-days mood data.
+ * - All other features unchanged.
  */
 @Composable
 fun MindOverviewScreen(
@@ -60,18 +47,19 @@ fun MindOverviewScreen(
 ) {
     val ctx = LocalContext.current
 
-    // VM reactive states
+    // Reactive states from VM
     val selectedDate by vm.today.collectAsState()
     val todayMinutes by vm.todayMinutes.collectAsState()
     val weekly by vm.weeklyMinutes.collectAsState()
     val streak by vm.streakDays.collectAsState()
     val reminder by vm.reminderEnabled.collectAsState()
-    val moodToday by vm.lastMood.collectAsState() // mood for selected day (today by default)
+    val moodToday by vm.lastMood.collectAsState()
+    val recent by vm.recentMoods3.collectAsState() // NEW: real data for "Recent moods"
 
-    // Dialog state for Guided sessions
+    // Guided session dialog
     var dialog by remember { mutableStateOf<GuidedConfigDialogState?>(null) }
 
-    // Open system DatePicker and update VM date
+    // System date picker
     fun openDatePicker() {
         val cal = Calendar.getInstance().apply {
             set(Calendar.YEAR, selectedDate.year)
@@ -87,7 +75,7 @@ fun MindOverviewScreen(
         ).show()
     }
 
-    // Small helpers
+    // Helpers
     val dailyGoal = 10
     val remaining = (dailyGoal - todayMinutes).coerceAtLeast(0)
     val motivation = when {
@@ -123,6 +111,7 @@ fun MindOverviewScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+
             // --- Today summary -------------------------------------------------
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
@@ -138,10 +127,8 @@ fun MindOverviewScreen(
                             Text("Today", style = MaterialTheme.typography.subtitle1)
                             Text("$todayMinutes / $dailyGoal min", color = Color.Gray)
                             Spacer(Modifier.height(6.dp))
-                            // soft motivation line
                             Text(motivation, color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f))
                         }
-                        // remaining pill
                         if (remaining > 0) {
                             Box(
                                 modifier = Modifier
@@ -156,7 +143,7 @@ fun MindOverviewScreen(
                 }
             }
 
-            // --- Quick Start: one-tap 3-min breathing (auto-start) -------------
+            // --- Quick Start ---------------------------------------------------
             Card(elevation = 4.dp) {
                 Row(
                     modifier = Modifier.padding(12.dp),
@@ -166,13 +153,13 @@ fun MindOverviewScreen(
                     Text("Quick start", style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f))
                     OutlinedButton(
                         onClick = {
-                            onOpenSession("Box Breathing", 3, selectedDate, "breathing", /*autoStart=*/true)
+                            onOpenSession("Box Breathing", 3, selectedDate, "breathing", true)
                         }
                     ) { Text("3 min") }
                 }
             }
 
-            // --- Quick actions: Mood (Planner removed) -------------------------
+            // --- Quick actions -------------------------------------------------
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -197,7 +184,7 @@ fun MindOverviewScreen(
                 )
             }
 
-            // --- Mood check-in (inline row) -----------------------------------
+            // --- Mood check-in -------------------------------------------------
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Mood check-in", style = MaterialTheme.typography.subtitle1)
@@ -229,18 +216,12 @@ fun MindOverviewScreen(
                 }
             }
 
-            // --- Recent moods (today / yesterday / 2 days ago) -----------------
-            // NOTE: if VM doesn't expose historical mood lookup yet, we show today's mood
-            // and fallback "—" for the previous two days. It still fills space meaningfully.
+            // --- Recent moods (now real data) ---------------------------------
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Recent moods", style = MaterialTheme.typography.subtitle1)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        val days = listOf(0L, 1L, 2L)
-                        days.forEach { back ->
-                            val date = selectedDate.minusDays(back)
-                            val label = weekdayShort(date)
-                            val moodGlyph = if (back == 0L) (moodToday?.glyph ?: "—") else "—"
+                        recent.forEach { (date, mood) ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(
                                     modifier = Modifier
@@ -248,9 +229,9 @@ fun MindOverviewScreen(
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(MaterialTheme.colors.primary.copy(alpha = 0.08f)),
                                     contentAlignment = Alignment.Center
-                                ) { Text(moodGlyph) }
+                                ) { Text(mood?.glyph ?: "—") }
                                 Spacer(Modifier.height(4.dp))
-                                Text(label, color = Color.Gray)
+                                Text(weekdayShort(date), color = Color.Gray)
                             }
                         }
                     }
@@ -262,7 +243,7 @@ fun MindOverviewScreen(
                 }
             }
 
-            // --- Guided sessions (open config dialog, then timer) --------------
+            // --- Guided sessions ----------------------------------------------
             val sessions = listOf(
                 MindSession("s1", "Box Breathing", 3, "focus", Color(0xFF26C6DA)),
                 MindSession("s2", "Body Scan", 5, "relax", Color(0xFF7C4DFF))
@@ -279,7 +260,7 @@ fun MindOverviewScreen(
                                     dialog = GuidedConfigDialogState(
                                         title = session.title,
                                         minutes = session.mins,
-                                        tag = if (session.title.contains("scan", ignoreCase = true)) "bodyscan" else "breathing"
+                                        tag = if (session.title.contains("scan", true)) "bodyscan" else "breathing"
                                     )
                                 }
                             )
@@ -290,13 +271,13 @@ fun MindOverviewScreen(
         }
     }
 
-    // --- Guided config dialog -----------------------------------------------
+    // --- Guided session dialog ----------------------------------------------
     dialog?.let { d ->
         GuidedConfigDialog(
             state = d,
             onDismiss = { dialog = null },
             onStart = { chosenMin, chosenTag ->
-                onOpenSession(d.title, chosenMin, selectedDate, chosenTag, /*autoStart=*/false)
+                onOpenSession(d.title, chosenMin, selectedDate, chosenTag, false)
                 dialog = null
             }
         )
@@ -325,10 +306,7 @@ private fun GuidedConfigDialog(
         title = { Text(state.title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    "A focused, guided practice. Choose your duration:",
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("A focused, guided practice. Choose your duration:", fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DurationChip(current = mins, value = 3) { mins = 3 }
                     DurationChip(current = mins, value = 5) { mins = 5 }
@@ -350,9 +328,7 @@ private fun DurationChip(current: Int, value: Int, onClick: () -> Unit) {
     ) { Text("$value min") }
 }
 
-// Helper: ensure a default if the provided minutes is not in [3,5,10]
+// Helpers
 private fun Int.coerceIn(choices: List<Int>) = if (this in choices) this else choices.first()
-
-// Helper: localized short weekday label (e.g., Mon, Tue)
 private fun weekdayShort(date: LocalDate): String =
     date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())

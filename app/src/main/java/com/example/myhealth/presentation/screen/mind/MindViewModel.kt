@@ -35,7 +35,7 @@ class MindViewModel(app: Application) : AndroidViewModel(app) {
         today.flatMapLatest { d -> repo.observeStreakEndingAt(d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
-    // Mood (latest for today if any)
+    // Mood (latest for "today"/selected date if any)
     val lastMood: StateFlow<Mood?> =
         today.flatMapLatest { d -> repo.observeLastMoodOf(d) }
             .map { it?.let { m -> Mood.valueOf(m.mood.uppercase()) } }
@@ -54,6 +54,33 @@ class MindViewModel(app: Application) : AndroidViewModel(app) {
                 map.toMap()
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, Mood.values().associateWith { 0 })
+
+    // -------------------------------------------------------------------------
+    // NEW: Recent moods (3 days) for the Overview "Recent moods" card.
+    // It returns a list of three pairs: [(today, mood?), (yesterday, mood?), (twoDaysAgo, mood?)]
+    // Whenever you change the selected date or add a mood, this flow auto-updates.
+    // -------------------------------------------------------------------------
+    val recentMoods3: StateFlow<List<Pair<LocalDate, Mood?>>> =
+        today.flatMapLatest { center ->
+            val start = center.minusDays(2)
+            val end = center
+            repo.observeMoodLogsBetween(start, end) // ordered by date DESC, id DESC
+                .map { logs ->
+                    // For each day (today/yesterday/2-days-ago), pick the latest mood of that day if any.
+                    listOf(0L, 1L, 2L).map { back ->
+                        val d = center.minusDays(back)
+                        val moodStr = logs.firstOrNull { it.date == d }?.mood
+                        val moodEnum = moodStr?.let { runCatching { Mood.valueOf(it.uppercase()) }.getOrNull() }
+                        d to moodEnum
+                    }
+                }
+        }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                // Default: empty (UI can show placeholders)
+                emptyList()
+            )
 
     // Reminder (in-memory demo; can swap to DataStore later)
     private val _reminderEnabled = MutableStateFlow(true)
@@ -108,8 +135,8 @@ class MindRepository(
         moodDao.observeLatestOf(date)
 
     /**
-     * ⚠️ 这里把 DAO 的 List<MoodCountDto> 转成 Map<String, Int>
-     * 这样上层 UI/旧代码无需修改。
+     * Keep the old public shape: convert DAO's List<MoodCountDto> to Map<String, Int>
+     * so UI code that expects a Map doesn't need to change.
      */
     fun observeMoodCountOfWeek(anyDay: LocalDate): Flow<Map<String, Int>> {
         val start = anyDay.with(DayOfWeek.MONDAY)
@@ -117,6 +144,14 @@ class MindRepository(
         return moodDao.observeCountByMoodBetween(start, end)
             .map { list: List<MoodCountDto> -> list.associate { it.mood to it.count } }
     }
+
+    // -------------------------------------------------------------------------
+    // NEW: Expose raw mood logs for a date range (inclusive), ordered by
+    // date DESC then id DESC. This directly matches the new DAO API and
+    // makes it trivial to derive "latest mood per day" on the ViewModel layer.
+    // -------------------------------------------------------------------------
+    fun observeMoodLogsBetween(start: LocalDate, end: LocalDate): Flow<List<MoodLogEntity>> =
+        moodDao.observeLogsBetween(start, end)
 
     suspend fun addSession(date: LocalDate, minutes: Int, tag: String) {
         sessionDao.insert(SessionEntity(date = date, minutes = minutes, tag = tag))

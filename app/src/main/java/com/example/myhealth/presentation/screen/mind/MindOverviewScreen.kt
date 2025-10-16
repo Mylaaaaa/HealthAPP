@@ -3,34 +3,41 @@ package com.example.myhealth.presentation.screen.mind
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack   // ← import back icon
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Settings   // ← import settings icon
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+/**
+ * MindOverviewScreen (updated)
+ * - Top bar: back + "Mindfulness" + only Settings (line-chart removed).
+ * - Body no big "Mindfulness" title; full white background.
+ * - "7-day trend": removed "Details" button; kept the chart card.
+ * - "Guided practice": clicking an item navigates to a dedicated session/timer screen.
+ */
 @Composable
 fun MindOverviewScreen(
-    onOpenState: () -> Unit,         // navigate to MindStateScreen
-    onOpenTimeSettings: () -> Unit,  // open system time picker
-    onBack: () -> Unit,              // popBackStack
+    onOpenSession: (title: String, mins: Int) -> Unit, // navigate to guided session/timer
+    onOpenSettings: () -> Unit,                         // navigate to date settings page
+    onBack: () -> Unit,                                 // popBackStack()
     vm: MindViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
             LocalContext.current.applicationContext as Application
@@ -51,13 +58,13 @@ fun MindOverviewScreen(
                 title = { Text("Mindfulness") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    // Keep only Settings icon (open time picker) — removed Timeline. :contentReference[oaicite:1]{index=1}
-                    IconButton(onClick = onOpenTimeSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Set reminder time")
+                    // Only keep Settings (open date-settings page); removed line-chart. :contentReference[oaicite:2]{index=2}
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Reminder/Date settings")
                     }
                 }
             )
@@ -65,14 +72,14 @@ fun MindOverviewScreen(
         backgroundColor = Color.White
     ) { inner ->
         Column(
-            Modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
                 .padding(16.dp)
                 .background(Color.White),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Today card (kept from your original structure) :contentReference[oaicite:2]{index=2}
+            // Today
             Card(elevation = 4.dp) {
                 Row(
                     Modifier.padding(12.dp),
@@ -109,7 +116,7 @@ fun MindOverviewScreen(
                 }
             }
 
-            // Quick actions (kept) :contentReference[oaicite:3]{index=3}
+            // Quick actions
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -119,7 +126,7 @@ fun MindOverviewScreen(
                     subtitle = "1–3 min",
                     icon = Icons.Filled.Psychology,
                     tint = MaterialTheme.colors.primary,
-                    onClick = { vm.addSession(3, "breathing") },
+                    onClick = { onOpenSession("Box Breathing", 3) },
                     modifier = Modifier.weight(1f)
                 )
                 QuickActionCard(
@@ -132,15 +139,15 @@ fun MindOverviewScreen(
                 )
                 QuickActionCard(
                     title = "Planner",
-                    subtitle = "schedule",
+                    subtitle = "date",
                     icon = Icons.Filled.Event,
                     tint = Color(0xFF7C4DFF),
-                    onClick = onOpenTimeSettings, // reuse time picker
+                    onClick = onOpenSettings,
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            // Mood inline picker (your original inline UI; no external MoodPicker) :contentReference[oaicite:4]{index=4}
+            // Mood check-in (inline)
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Mood check-in", style = MaterialTheme.typography.subtitle1)
@@ -172,22 +179,16 @@ fun MindOverviewScreen(
                 }
             }
 
-            // 7-day trend (Details navigates to State) :contentReference[oaicite:5]{index=5}
+            // 7-day trend (no "Details" button now). :contentReference[oaicite:3]{index=3}
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("7-day trend", style = MaterialTheme.typography.subtitle1)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = onOpenState) {
-                            Text("Details")
-                        }
-                    }
+                    Text("7-day trend", style = MaterialTheme.typography.subtitle1)
                     Spacer(Modifier.height(8.dp))
                     BarMiniChart(values = weekly.map { it.toFloat() })
                 }
             }
 
-            // Guided sessions (each starts then go to State) :contentReference[oaicite:6]{index=6}
+            // Guided practice (renamed; navigates to timer screen)
             val sessions = listOf(
                 MindSession("s1", "Box Breathing", 3, "focus", Color(0xFF26C6DA)),
                 MindSession("s2", "Body Scan", 5, "relax", Color(0xFF7C4DFF)),
@@ -196,13 +197,13 @@ fun MindOverviewScreen(
             )
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("Guided sessions", style = MaterialTheme.typography.subtitle1)
+                    Text("Guided practice", style = MaterialTheme.typography.subtitle1)
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(sessions) { s ->
                             GuidedChip(s = s, onStart = {
-                                vm.addSession(s.mins, s.tag)
-                                onOpenState()
+                                // Navigate to the dedicated guided session (timer) screen
+                                onOpenSession(s.title, s.mins)
                             })
                         }
                     }

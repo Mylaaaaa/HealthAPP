@@ -345,13 +345,8 @@ fun HealthConnectNavigation(
         composable(Screen.Mind.route) {
             val context = LocalContext.current
             MindRootScreen(
-                onBack = { navController.popBackStack() },
-                onOpenTimeSettings = {
-                    showTimePicker(context)
-                }
+                onBack = { navController.popBackStack() }
             )
-
-
         }
     }
 }

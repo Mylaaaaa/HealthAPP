@@ -51,13 +51,6 @@ fun MindStateScreen(
     val cInsights = MaterialTheme.colors.primary.copy(alpha = 0.05f)
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Mindfulness • State") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
-                backgroundColor = Color.White, elevation = 0.dp
-            )
-        },
         backgroundColor = Color.White
     ) { inner ->
         Column(

@@ -82,12 +82,17 @@ fun MindOverviewScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mindfulness") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
-                actions = { IconButton(onClick = ::openDatePicker) { Icon(Icons.Filled.Event, null) } },
-                backgroundColor = Color.White, elevation = 0.dp
+                title = { /* no title */ },
+                actions = {
+                    IconButton(onClick = ::openDatePicker) {
+                        Icon(Icons.Filled.Event, contentDescription = "Select date")
+                    }
+                },
+                backgroundColor = Color.White,
+                elevation = 0.dp
             )
         },
+
         backgroundColor = Color.White
     ) { inner ->
         Column(

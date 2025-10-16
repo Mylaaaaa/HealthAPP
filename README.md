@@ -1,139 +1,132 @@
 # 🩺 MyHealth – Personal Health & Wellness Tracker
 
-
 **MyHealth** is an Android application developed with **Jetpack Compose** and **Health Connect APIs**,  
-designed to help users monitor their health data — including **sleep sessions** and **nutrition intake** —  
-in a single, unified interface.
-
+designed to help users monitor and improve their overall wellness — including **exercise**, **sleep**, **nutrition**, **mindfulness**, and **weight tracking** — all in one modern and unified interface.
 
 ---
 
 ## 👨‍💻 Author
-
-**Zihan Wang**
-
+**Zihan Wang**  
 🌐 GitHub: [Mylaaaaa](https://github.com/Mylaaaaa)
 
 ---
 
+## 🌟 Main Features
 
-## 🌟 Features
+### 🔐 Login & Register Module
+Provides secure authentication and ensures that only valid users can access the app.
+
+#### 🧩 Key Features
+- **Login / Register** options shown at first launch.
+- **Email Validation:** Ensures the username is a valid email format.
+- **Password Rules:**
+  - Must be at least **6 characters long**.
+  - Requires **double confirmation**; mismatched entries trigger an error prompt.
+
+💡 *Ensures safe, reliable, and user-friendly access to the MyHealth ecosystem.*
+
+---
 
 ### 🏋️ Exercise Session Module
-
-The **Exercise Session** feature helps users plan, perform, and review their workouts through four main pages: **Plan**, **Workout**, **Courses**, and **States**.
-
----
+Helps users plan, perform, and review their workouts through four sections: **Plan**, **Workout**, **Courses**, and **State**.
 
 #### 🗓️ Plan Page
-- When users first open the page, they answer a few setup questions:
-    - Fitness goal (muscle gain, fat loss, or general health)
-    - Available days per week
-    - Outdoor training ability and equipment access
-- The system then creates a **weekly workout plan** with daily exercise suggestions.
-- 💡 *Personalized plans are generated based on user input and stored for future updates.*
-
----
+- Collects user input (fitness goal, available days, equipment, etc.)
+- Generates a **personalized weekly plan** with daily recommendations.  
+  💡 *Smart fitness planning based on lifestyle and goals.*
 
 #### 💪 Workout Page
-- Shows the **daily workout list** with sets, reps, and durations.
-- Users can mark each exercise as *completed*, which updates a **progress bar** in real time.
-- Tracks daily completion rate and keeps users motivated.
-- 💡 *Built with Compose state updates and ViewModel reactive data.*
-
----
+- Displays **daily exercises** with progress tracking and completion rate.  
+  💡 *Dynamic progress bar motivates consistency.*
 
 #### 🎥 Courses Page
-- Displays recommended **video courses** such as yoga, HIIT, and stretching.
-- Users can view details and **join courses** they are interested in.
-- Joined courses are saved and reflected in progress tracking.
-- 💡 *Efficient list rendering using LazyColumn for smooth scrolling.*
+- Provides recommended video lessons (e.g., Yoga, HIIT).
+- Users can **join** or **track** courses they follow.  
+  💡 *Built with `LazyColumn` for smooth scrolling and performance.*
+
+#### 📊 State Page
+- Shows weekly performance analytics: total time, average duration, and best streak.  
+  💡 *Custom Compose charts visualize weekly insights clearly.*
 
 ---
-
-#### 📊 States Page
-- Shows the user’s **weekly performance summary**, including:
-    - Total workout time
-    - Average duration per day
-    - Longest active streak
-- Provides clear visual charts to show workout consistency.
-- 💡 *Custom Compose charts present progress and weekly insights.*
-
----
-
-#### 🧠 Summary
-This module combines planning, tracking, and performance review in one place — helping users stay consistent and reach their fitness goals efficiently.
-
 
 ### 😴 Sleep Session Module
-
-The **Sleep Session** feature helps users monitor, review, and analyze their sleep patterns through three main pages: **Overview**, **Log**, and **State**.
-
----
+Tracks and analyzes sleep patterns through **Overview**, **Log**, and **State** pages.
 
 #### 💤 Overview Page
-- Displays **today’s and yesterday’s sleep details**, including:
-    - Deep sleep, light sleep, REM, and awake durations
-    - Overall sleep quality score
-- Provides **sleep analysis** and **personalized tips** to help improve rest quality.
-- 💡 *Real-time data visualization built with Compose cards and dynamic color indicators.*
-
----
+- Displays **today & yesterday’s** deep/light/REM/awake durations and quality.
+- Provides **sleep analysis** and **personalized improvement tips**.  
+  💡 *Real-time data cards with adaptive visuals.*
 
 #### 📘 Log Page
-- Lists **all recorded sleep sessions** in chronological order.
-- Each record shows key details such as total duration, stages, and quality.
-- Allows users to **review historical sleep data** and compare progress.
-- 💡 *Uses `LazyColumn` for efficient display of long sleep histories.*
+- Lists all sleep records with timestamps and quality ratings.  
+  💡 *Scrollable history for progress comparison.*
+
+#### 📈 State Page
+- Shows **7-day stacked bar chart** (Deep / Light / REM / Awake).
+- Provides **weekly summaries** with insights.  
+  💡 *Color-coded visualization for better understanding.*
 
 ---
-
-#### 📊 State Page
-- Presents the **past seven days of sleep data** using a colorful bar chart:
-    - Different colors represent deep sleep, light sleep, REM, and awake time.
-- Includes a **weekly summary** with average duration and trend insights.
-- 💡 *Implements multi-color stacked bar visualization and weekly analytics.*
-
----
-
-#### 🧠 Summary
-This module gives users a complete view of their sleep habits — from daily tracking to weekly insights — helping them understand and improve their overall sleep quality.
-
 
 ### 🥗 Nutrition Module
-
-The **Nutrition** feature allows users to record, analyze, and optimize their daily food intake through two main pages: **Overview** and **State**.
-
----
+Supports manual food logging, nutrient breakdown, and weekly trend tracking.
 
 #### 🍽️ Overview Page
-- Users can **manually add daily meals**, and the system automatically calculates:
-    - **Calories**
-    - **Carbohydrates (Carbs)**
-    - **Protein**
-    - **Fat**
-- If the user has **chronic conditions** (e.g., diabetes, hypertension),  
-  personalized diet suggestions are provided accordingly.
-- If no medical conditions are entered, a **general recommended food plan** is still generated.
-- Displays the section **“Recommended Foods”** for quick dietary advice.
-- 💡 *Provides a real-time calorie calculator and adaptive meal recommendations.*
-
----
+- Users can manually input food and get automatic calculations of:
+  - **Calories**, **Protein**, **Carbs**, and **Fat**
+- Accepts optional **chronic condition input** for tailored diet plans.
+- Displays a **Recommended Foods** section.  
+  💡 *Offers personalized meal guidance and calorie awareness.*
 
 #### 📊 State Page
-- Summarizes the user’s **weekly nutrition data** including:
-    - **Energy balance** (total kcal intake vs. target)
-    - **Macro targets** (Protein, Carbs, Fat)
-    - **Quality guard** (Sugar, Saturated Fat, Sodium)
-- Includes two visual analytics sections:
-    - **7-Day Calorie Trend** — daily calorie intake bar chart
-    - **7-Day Macro Ratio** — nutrient proportion comparison
-- 💡 *Color-coded charts provide clear feedback on user’s nutrition habits.*
+- Visualizes **weekly calorie intake** and **macro balance**:
+  - 7-day calorie trend
+  - Macro ratio comparison  
+    💡 *Color-coded bar charts make nutrition tracking intuitive.*
 
 ---
 
-#### 🧠 Summary
-This module helps users develop healthier eating habits by offering detailed nutrition tracking, personalized recommendations, and insightful weekly analytics.
+### 🧘 Mindfulness Module
+Improves mental well-being through breathing, mood tracking, and guided meditation.
+
+#### 🌞 Overview Page
+- Shows today’s **goal progress**, **motivation messages**, and **quick actions**:
+  - **Breathing** (3-min guided)
+  - **Mood Check-in** (emoji-based)
+- Displays **recent moods** and **guided sessions** (Box Breathing, Body Scan).  
+  💡 *Simplified UI encourages daily mindfulness habits.*
+
+#### 📈 State Page
+- Provides a deeper look into **weekly mindfulness progress**:
+  - 7-day rolling trend
+  - Adherence rate and streak count
+  - Mood distribution visualization  
+    💡 *Uses soft pastel charts for clear, relaxing analytics.*
+
+---
+
+### ⚖️ Record Weight Module
+A single-page feature for quick weight input and trend tracking.
+
+#### 🧩 Functionality
+- Users enter daily weight manually.
+- Displays all records with timestamps.
+- Automatically calculates **weekly average**.  
+  💡 *Simple design, instant feedback on progress.*
+
+---
+
+### ⚙️ Settings Module
+Gives users control over app permissions and appearance.
+
+#### 🧩 Current Features
+- **Health Connect Permission:** requested at first launch and editable anytime.
+
+#### 🌙 Planned Features
+- **Dark / Light Mode switching**
+- **Notification & Theme customization**  
+  💡 *Ensures privacy, control, and user comfort.*
 
 ---
 
@@ -150,41 +143,31 @@ This module helps users develop healthier eating habits by offering detailed nut
 
 ---
 
-## 📱 App Structure
+## 📱 App Overview
 
-### home
-![home1.png](screenshots/home1.png)
+### 🏠 Home & Navigation
+- Bottom navigation bar provides quick access to all modules.
+- Consistent UI layout and smooth transitions.
 
-![home2.png](screenshots/home2.png)
+### 📊 Data Insights
+- Real-time, reactive analytics for all modules.
+- Includes **rolling 7-day charts**, **streak counts**, and **personalized messages**.
 
-### record weight
-![recordweight.png](screenshots/recordweight.png)
-
----
-
-## 🧠 How It Works
-
-1. When first launched, the app requests **Health Connect permissions**.
-2. Once granted, it automatically loads **Sleep** and **Nutrition** data.
-3. If data is unavailable, users can simulate records using the “Generate Sleep Data” button.
-4. The **Nutrition** screen allows manual meal entry and calorie calculation.
-5. Planned future version will provide **AI-based personalized nutrition suggestions**.
+### 🔔 Permissions & Security
+- Full Health Connect integration for reading/writing data.
+- Clear user consent and data transparency.
 
 ---
 
 ## 🚀 Future Improvements
-
-- 🔹 Real-time integration with Health Connect Nutrition APIs.
-- 🔹 Personalized diet recommendations using AI and user health profiles.
-- 🔹 Sleep analytics dashboard (charts & insights).
-- 🔹 Cloud data sync and backup.
-- 🔹 Firebase authentication for multi-device use.
+- Real-time Health Connect Nutrition integration.
+- AI-driven diet and mindfulness recommendations.
+- Sleep pattern prediction with ML models.
+- Firebase authentication & multi-device sync.
+- Cloud data backup and dark mode support.
 
 ---
 
-
-
-
 ## ⚠️ Disclaimer
 This application is intended **for academic and educational purposes only**.  
-All health data displayed in this project is **simulated**, not real medical information.
+All displayed health data is **simulated**, not real medical information.

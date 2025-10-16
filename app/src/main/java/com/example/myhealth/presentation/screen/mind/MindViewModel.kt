@@ -25,7 +25,7 @@ class MindViewModel(app: Application) : AndroidViewModel(app) {
         today.flatMapLatest { d -> repo.observeMinutesOf(d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
-    // Weekly minutes (Mon..Sun, size = 7)
+    // Weekly minutes (rolling 7 days: D-6..D)
     val weeklyMinutes: StateFlow<List<Int>> =
         today.flatMapLatest { d -> repo.observeWeekMinutesOf(d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, List(7) { 0 })
@@ -35,7 +35,7 @@ class MindViewModel(app: Application) : AndroidViewModel(app) {
         today.flatMapLatest { d -> repo.observeStreakEndingAt(d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
-    // Mood (latest for "today"/selected date if any)
+    // Mood (latest for selected date if any)
     val lastMood: StateFlow<Mood?> =
         today.flatMapLatest { d -> repo.observeLastMoodOf(d) }
             .map { it?.let { m -> Mood.valueOf(m.mood.uppercase()) } }
@@ -55,18 +55,13 @@ class MindViewModel(app: Application) : AndroidViewModel(app) {
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, Mood.values().associateWith { 0 })
 
-    // -------------------------------------------------------------------------
-    // NEW: Recent moods (3 days) for the Overview "Recent moods" card.
-    // It returns a list of three pairs: [(today, mood?), (yesterday, mood?), (twoDaysAgo, mood?)]
-    // Whenever you change the selected date or add a mood, this flow auto-updates.
-    // -------------------------------------------------------------------------
+    // Recent moods (3 days) for Overview: [(today, mood?), (yesterday, mood?), (twoDaysAgo, mood?)]
     val recentMoods3: StateFlow<List<Pair<LocalDate, Mood?>>> =
         today.flatMapLatest { center ->
             val start = center.minusDays(2)
             val end = center
             repo.observeMoodLogsBetween(start, end) // ordered by date DESC, id DESC
                 .map { logs ->
-                    // For each day (today/yesterday/2-days-ago), pick the latest mood of that day if any.
                     listOf(0L, 1L, 2L).map { back ->
                         val d = center.minusDays(back)
                         val moodStr = logs.firstOrNull { it.date == d }?.mood
@@ -75,20 +70,15 @@ class MindViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
         }
-            .stateIn(
-                viewModelScope,
-                SharingStarted.Eagerly,
-                // Default: empty (UI can show placeholders)
-                emptyList()
-            )
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    // Reminder (in-memory demo; can swap to DataStore later)
+    // Reminder (in-memory demo)
     private val _reminderEnabled = MutableStateFlow(true)
     val reminderEnabled: StateFlow<Boolean> = _reminderEnabled.asStateFlow()
 
     fun setDate(d: LocalDate) { _today.value = d }
 
-    // Actions to wire from UI
+    // Actions
     fun addSession(minutes: Int, tag: String) = viewModelScope.launch {
         if (minutes > 0) repo.addSession(_today.value, minutes, tag)
     }
@@ -109,35 +99,29 @@ class MindRepository(
     fun observeMinutesOf(date: LocalDate): Flow<Int> =
         sessionDao.observeSumByDate(date).map { it ?: 0 }
 
+    // 🔁 Rolling 7 days: [anyDay - 6, ..., anyDay]
     fun observeWeekMinutesOf(anyDay: LocalDate): Flow<List<Int>> {
-        val start = anyDay.with(DayOfWeek.MONDAY)
-        val end = start.plusDays(6)
+        val start = anyDay.minusDays(6)
+        val end = anyDay
         return sessionDao.observeBetween(start, end).map { list ->
-            val map = list.groupBy { it.date }
-                .mapValues { entry -> entry.value.sumOf { it.minutes } }
-            (0..6).map { i -> map[start.plusDays(i.toLong())] ?: 0 }
+            val byDate = list.groupBy { it.date }.mapValues { it.value.sumOf { s -> s.minutes } }
+            (0..6).map { i -> byDate[start.plusDays(i.toLong())] ?: 0 }
         }
     }
 
     fun observeStreakEndingAt(today: LocalDate): Flow<Int> =
         sessionDao.observeRecentDays(today.minusDays(30), today).map { list ->
-            val datesWithMinutes = list.groupBy { it.date }
-                .mapValues { it.value.sumOf { s -> s.minutes } }
+            val datesWithMinutes = list.groupBy { it.date }.mapValues { it.value.sumOf { s -> s.minutes } }
             var streak = 0
             var d = today
-            while ((datesWithMinutes[d] ?: 0) > 0) {
-                streak += 1; d = d.minusDays(1)
-            }
+            while ((datesWithMinutes[d] ?: 0) > 0) { streak += 1; d = d.minusDays(1) }
             streak
         }
 
-    fun observeLastMoodOf(date: LocalDate): Flow<MoodLogEntity?> =
+    fun observeLastMoodOf(date: LocalDate): Flow<com.example.myhealth.presentation.screen.mind.db.MoodLogEntity?> =
         moodDao.observeLatestOf(date)
 
-    /**
-     * Keep the old public shape: convert DAO's List<MoodCountDto> to Map<String, Int>
-     * so UI code that expects a Map doesn't need to change.
-     */
+    /** Keep Map shape for UI compatibility. */
     fun observeMoodCountOfWeek(anyDay: LocalDate): Flow<Map<String, Int>> {
         val start = anyDay.with(DayOfWeek.MONDAY)
         val end = start.plusDays(6)
@@ -145,11 +129,7 @@ class MindRepository(
             .map { list: List<MoodCountDto> -> list.associate { it.mood to it.count } }
     }
 
-    // -------------------------------------------------------------------------
-    // NEW: Expose raw mood logs for a date range (inclusive), ordered by
-    // date DESC then id DESC. This directly matches the new DAO API and
-    // makes it trivial to derive "latest mood per day" on the ViewModel layer.
-    // -------------------------------------------------------------------------
+    // NEW: raw mood logs within a range (date DESC, id DESC)
     fun observeMoodLogsBetween(start: LocalDate, end: LocalDate): Flow<List<MoodLogEntity>> =
         moodDao.observeLogsBetween(start, end)
 

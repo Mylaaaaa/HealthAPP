@@ -25,21 +25,15 @@ import java.time.LocalDate
 
 /**
  * MindRootScreen
- *
- * - Creates ONE shared MindViewModel and passes it down to all child screens.
- * - Keeps the bottom tabs (Overview / State).
- * - Timer route receives title/mins/date/tag/auto and also the SAME vm instance.
+ * - Hoists ONE shared MindViewModel for all child screens.
  */
 @Composable
 fun MindRootScreen() {
     val nav = rememberNavController()
     val current by nav.currentBackStackEntryAsState()
 
-    // ✅ Hoist a SINGLE MindViewModel at the root
     val app = LocalContext.current.applicationContext as Application
-    val vm: MindViewModel = viewModel(
-        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(app)
-    )
+    val vm: MindViewModel = viewModel(factory = ViewModelProvider.AndroidViewModelFactory.getInstance(app))
 
     Scaffold(
         backgroundColor = Color.White,
@@ -69,35 +63,20 @@ fun MindRootScreen() {
             }
         }
     ) { inner ->
-        NavHost(
-            navController = nav,
-            startDestination = "mind_overview",
-            modifier = Modifier.padding(inner)
-        ) {
-            // Overview (uses the shared vm)
+        NavHost(navController = nav, startDestination = "mind_overview", modifier = Modifier.padding(inner)) {
             composable("mind_overview") {
                 MindOverviewScreen(
                     onBack = { nav.popBackStack() },
-                    onOpenSession = { title, mins, date, tag, autoStart ->
+                    onOpenSession = { title, mins, date, tag, auto ->
                         val encodedTitle = URLEncoder.encode(title, StandardCharsets.UTF_8.name())
-                        val dateIso = date.toString()
-                        nav.navigate(
-                            "mind_session_timer?title=$encodedTitle&mins=$mins&date=$dateIso&tag=$tag&auto=$autoStart"
-                        )
+                        nav.navigate("mind_session_timer?title=$encodedTitle&mins=$mins&date=${date}&tag=$tag&auto=$auto")
                     },
-                    vm = vm // ✅ pass the shared vm
+                    vm = vm
                 )
             }
-
-            // State (uses the shared vm)
             composable("mind_state") {
-                MindStateScreen(
-                    onBack = { nav.popBackStack() },
-                    vm = vm // ✅ pass the shared vm
-                )
+                MindStateScreen(onBack = { nav.popBackStack() }, vm = vm)
             }
-
-            // Timer (also uses the shared vm so date/records update everywhere)
             composable(
                 route = "mind_session_timer?title={title}&mins={mins}&date={date}&tag={tag}&auto={auto}",
                 arguments = listOf(
@@ -121,7 +100,7 @@ fun MindRootScreen() {
                     tag = tag,
                     autoStart = auto,
                     onBack = { nav.popBackStack() },
-                    vm = vm // ✅ pass the SAME vm instance
+                    vm = vm
                 )
             }
         }

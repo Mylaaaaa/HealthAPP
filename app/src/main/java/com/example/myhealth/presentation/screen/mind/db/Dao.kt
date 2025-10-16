@@ -64,7 +64,7 @@ interface MoodDao {
 
     /**
      * Aggregate mood counts within [start, end] (inclusive), grouped by mood.
-     * Useful for "Mood distribution (7d)" pie/bars.
+     * Useful for "Mood distribution (7d)" bars.
      */
     @Query(
         """
@@ -80,15 +80,12 @@ interface MoodDao {
         end: LocalDate
     ): Flow<List<MoodCountDto>>
 
-    // -------------------- NEW API (kept minimal & generic) --------------------
+    // -------------------- NEW API --------------------
 
     /**
      * NEW: Observe all mood logs in [start, end] (inclusive), ordered by
      * date DESC then id DESC. This makes it trivial to derive the "latest mood per day"
-     * on the ViewModel layer:
-     *
-     * - For each date, take the first item as the latest mood of that day.
-     * - Works great for "Recent moods (today / yesterday / 2 days ago)".
+     * on the ViewModel layer.
      */
     @Query("SELECT * FROM mind_moods WHERE date BETWEEN :start AND :end ORDER BY date DESC, id DESC")
     fun observeLogsBetween(

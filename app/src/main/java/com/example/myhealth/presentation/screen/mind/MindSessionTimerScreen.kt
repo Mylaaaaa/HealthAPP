@@ -16,20 +16,24 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
+import java.time.LocalDate
 
 /**
  * MindSessionTimerScreen
  *
- * A guided mindfulness session screen with a countdown timer.
- * - title: practice name (e.g., "Box Breathing")
- * - minutes: duration in minutes
- * - Provides Start, Pause, Reset, and Finish buttons.
- * - When finished, saves session to database via ViewModel and returns.
+ * - title: practice name ("Box Breathing", etc.)
+ * - minutes: planned duration (3/5/10)
+ * - dateIso: ISO date string (yyyy-MM-dd) to save into
+ * - tag: normalized tag ("breathing", "bodyscan", ...)
+ * - autoStart: if true, the timer starts automatically (used by Quick action)
  */
 @Composable
 fun MindSessionTimerScreen(
     title: String,
     minutes: Int,
+    dateIso: String,
+    tag: String,
+    autoStart: Boolean,
     onBack: () -> Unit,
     vm: MindViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
@@ -37,18 +41,17 @@ fun MindSessionTimerScreen(
         )
     )
 ) {
-    var running by remember { mutableStateOf(false) }       // Timer running state
+    var running by remember { mutableStateOf(autoStart) }
     var secondsLeft by remember { mutableStateOf(minutes * 60) }
 
-    // Countdown logic
+    // Countdown effect
     LaunchedEffect(running, secondsLeft) {
         if (running && secondsLeft > 0) {
-            delay(1000L)
+            delay(1000)
             secondsLeft -= 1
         }
     }
 
-    // Convert remaining time to MM:SS format
     val mm = secondsLeft / 60
     val ss = secondsLeft % 60
     val timeText = "%02d:%02d".format(mm, ss)
@@ -72,8 +75,7 @@ fun MindSessionTimerScreen(
             Modifier
                 .fillMaxSize()
                 .padding(inner)
-                .padding(24.dp)
-                .background(Color.White),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
@@ -82,7 +84,7 @@ fun MindSessionTimerScreen(
 
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Button(onClick = { running = !running }) {
-                    Text(if (running) "Pause" else "Start")
+                    Text(if (running) "Pause" else if (secondsLeft == minutes * 60) "Start" else "Resume")
                 }
                 OutlinedButton(onClick = {
                     running = false
@@ -90,12 +92,14 @@ fun MindSessionTimerScreen(
                 }) { Text("Reset") }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
 
             Button(
                 onClick = {
-                    running = false
-                    vm.addSession(minutes, title.lowercase())
+                    // Ensure we save to the date that was selected in overview
+                    val date = runCatching { LocalDate.parse(dateIso) }.getOrElse { LocalDate.now() }
+                    vm.setDate(date)
+                    vm.addSession(minutes, tag)
                     onBack()
                 },
                 enabled = !running || secondsLeft == 0

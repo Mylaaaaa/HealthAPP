@@ -17,16 +17,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.time.LocalDate
 
 /**
  * MindRootScreen
  *
- * Hosts the Mind feature:
- *  - Overview (dashboard)
- *  - State (analytics)
- *  - SessionTimer (guided practice timer)
- *
- * No external parameters needed; this function owns its NavController.
+ * - Bottom tabs: Overview / State
+ * - Extra route: mind_session_timer (with title, mins, date ISO, tag, and autoStart)
  */
 @Composable
 fun MindRootScreen() {
@@ -60,42 +57,54 @@ fun MindRootScreen() {
                 )
             }
         }
-    ) { innerPadding ->
+    ) { inner ->
         NavHost(
             navController = nav,
             startDestination = "mind_overview",
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(inner)
         ) {
             // Overview
             composable("mind_overview") {
                 MindOverviewScreen(
                     onBack = { nav.popBackStack() },
-                    onOpenSession = { title, mins ->
-                        val encoded = java.net.URLEncoder.encode(title, java.nio.charset.StandardCharsets.UTF_8.name())
-                        nav.navigate("mind_session_timer?title=$encoded&mins=$mins")
+                    onOpenSession = { title, mins, date, tag, autoStart ->
+                        val encodedTitle = URLEncoder.encode(title, StandardCharsets.UTF_8.name())
+                        val dateIso = date.toString() // yyyy-MM-dd
+                        nav.navigate(
+                            "mind_session_timer?title=$encodedTitle&mins=$mins&date=$dateIso&tag=$tag&auto=$autoStart"
+                        )
                     }
                 )
             }
-
 
             // State
             composable("mind_state") {
                 MindStateScreen(onBack = { nav.popBackStack() })
             }
 
-            // Guided session timer
+            // Timer
             composable(
-                route = "mind_session_timer?title={title}&mins={mins}",
+                route = "mind_session_timer?title={title}&mins={mins}&date={date}&tag={tag}&auto={auto}",
                 arguments = listOf(
                     navArgument("title") { type = NavType.StringType; defaultValue = "Session" },
-                    navArgument("mins") { type = NavType.IntType; defaultValue = 3 }
+                    navArgument("mins") { type = NavType.IntType; defaultValue = 3 },
+                    navArgument("date") { type = NavType.StringType; defaultValue = LocalDate.now().toString() },
+                    navArgument("tag") { type = NavType.StringType; defaultValue = "breathing" },
+                    navArgument("auto") { type = NavType.BoolType; defaultValue = false }
                 )
-            ) { bs ->
-                val title = bs.arguments?.getString("title") ?: "Session"
-                val mins = bs.arguments?.getInt("mins") ?: 3
+            ) { back ->
+                val title = back.arguments?.getString("title") ?: "Session"
+                val mins = back.arguments?.getInt("mins") ?: 3
+                val dateIso = back.arguments?.getString("date") ?: LocalDate.now().toString()
+                val tag = back.arguments?.getString("tag") ?: "breathing"
+                val auto = back.arguments?.getBoolean("auto") ?: false
+
                 MindSessionTimerScreen(
                     title = title,
                     minutes = mins,
+                    dateIso = dateIso,
+                    tag = tag,
+                    autoStart = auto,
                     onBack = { nav.popBackStack() }
                 )
             }

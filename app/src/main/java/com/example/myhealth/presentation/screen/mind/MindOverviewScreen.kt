@@ -1,5 +1,5 @@
 package com.example.myhealth.presentation.screen.mind
-
+import androidx.compose.runtime.mutableIntStateOf
 import android.app.Application
 import android.app.DatePickerDialog
 import androidx.compose.foundation.background
@@ -12,7 +12,6 @@ import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -27,18 +27,18 @@ import java.time.LocalDate
 import java.util.*
 
 /**
- * MindOverviewScreen
+ * MindOverviewScreen (Plan B)
  *
- * - White TopAppBar (no blue secondary appbar): back arrow + "Mindfulness" + calendar icon.
- * - REMOVED the inline date quick bar (Yesterday/Today/Tomorrow) per your request.
- * - RESTORED "Planner" quick card.
- * - 7-day trend shows chart ONLY (removed "Details").
- * - Guided sessions open your timer page via onOpenSession(title, mins).
+ * - White TopAppBar: back + "Mindfulness" + calendar icon (date picker).
+ * - Quick actions: Breathing (one-tap 3 min, auto-start), Mood (check-in).  // Planner removed.
+ * - Guided sessions: tapping shows a config dialog (description + duration 3/5/10 + Start).
+ * - 7-day trend has NO "Details" button.
+ * - When starting a session, we also pass the currently selected date to the timer screen.
  */
 @Composable
 fun MindOverviewScreen(
     onBack: () -> Unit,
-    onOpenSession: (String, Int) -> Unit = { _, _ -> },   // open timer screen
+    onOpenSession: (title: String, mins: Int, date: LocalDate, tag: String, autoStart: Boolean) -> Unit = { _, _, _, _, _ -> },
     vm: MindViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
             LocalContext.current.applicationContext as Application
@@ -47,7 +47,7 @@ fun MindOverviewScreen(
 ) {
     val ctx = LocalContext.current
 
-    // VM-backed reactive states. VM defaults date to today; calendar changes it.
+    // ViewModel-driven reactive states
     val selectedDate by vm.today.collectAsState()
     val todayMinutes by vm.todayMinutes.collectAsState()
     val weekly by vm.weeklyMinutes.collectAsState()
@@ -55,7 +55,9 @@ fun MindOverviewScreen(
     val reminder by vm.reminderEnabled.collectAsState()
     val mood by vm.lastMood.collectAsState()
 
-    // Calendar picker (kept in the top-right action)
+    // Simple config dialog state for Guided session
+    var dialog by remember { mutableStateOf<GuidedConfigDialogState?>(null) }
+
     fun openDatePicker() {
         val cal = Calendar.getInstance().apply {
             set(Calendar.YEAR, selectedDate.year)
@@ -115,11 +117,7 @@ fun MindOverviewScreen(
                         Text("Today", style = MaterialTheme.typography.subtitle1)
                         Text("$todayMinutes / 10 min", color = Color.Gray)
                         Spacer(Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.LocalFireDepartment, null, tint = Color(0xFFFF7043))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Streak: $streak days")
-                        }
+                        Text("Streak: $streak days")
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Reminders", style = MaterialTheme.typography.caption)
@@ -128,17 +126,20 @@ fun MindOverviewScreen(
                 }
             }
 
-            // Quick actions (Breathing / Mood / Planner restored)
+            // Quick actions (Planner removed)
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // One-tap breathing: go straight to timer, auto start, default 3 min
                 QuickActionCard(
                     title = "Breathing",
                     subtitle = "1–3 min",
                     icon = Icons.Filled.Psychology,
                     tint = MaterialTheme.colors.primary,
-                    onClick = { onOpenSession("Box Breathing", 3) },
+                    onClick = {
+                        onOpenSession("Box Breathing", 3, selectedDate, "breathing", /*autoStart=*/true)
+                    },
                     modifier = Modifier.weight(1f)
                 )
                 QuickActionCard(
@@ -149,17 +150,9 @@ fun MindOverviewScreen(
                     onClick = { vm.checkInMood(Mood.GOOD) },
                     modifier = Modifier.weight(1f)
                 )
-                QuickActionCard(
-                    title = "Planner",               // restored
-                    subtitle = "schedule",
-                    icon = Icons.Filled.Event,
-                    tint = Color(0xFF7C4DFF),
-                    onClick = ::openDatePicker,      // reuse calendar
-                    modifier = Modifier.weight(1f)
-                )
             }
 
-            // Mood picker (inline)
+            // Mood picker
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Mood check-in", style = MaterialTheme.typography.subtitle1)
@@ -182,8 +175,7 @@ fun MindOverviewScreen(
                                 Spacer(Modifier.height(2.dp))
                                 Text(
                                     m.label,
-                                    color = if (selected) m.tint
-                                    else MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
+                                    color = if (selected) m.tint else MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
                                 )
                             }
                         }
@@ -191,7 +183,7 @@ fun MindOverviewScreen(
                 }
             }
 
-            // 7-day trend (Details removed)
+            // 7-day trend (no Details)
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
                     Text("7-day trend", style = MaterialTheme.typography.subtitle1)
@@ -200,7 +192,7 @@ fun MindOverviewScreen(
                 }
             }
 
-            // Guided sessions → open timer
+            // Guided sessions: opens a config dialog instead of going straight to timer
             val sessions = listOf(
                 MindSession("s1", "Box Breathing", 3, "focus", Color(0xFF26C6DA)),
                 MindSession("s2", "Body Scan", 5, "relax", Color(0xFF7C4DFF))
@@ -213,7 +205,16 @@ fun MindOverviewScreen(
                         items(sessions) { s ->
                             GuidedChip(
                                 s = s,
-                                onStart = { session -> onOpenSession(session.title, session.mins) }
+                                onStart = { session ->
+                                    // Open config dialog: user can pick duration then start
+                                    dialog = GuidedConfigDialogState(
+                                        title = session.title,
+                                        // default minutes based on item
+                                        minutes = session.mins,
+                                        // normalized tags for analytics
+                                        tag = if (session.title.contains("scan", ignoreCase = true)) "bodyscan" else "breathing"
+                                    )
+                                }
                             )
                         }
                     }
@@ -221,4 +222,74 @@ fun MindOverviewScreen(
             }
         }
     }
+
+    // Configuration Dialog for Guided sessions
+    dialog?.let { d ->
+        GuidedConfigDialog(
+            state = d,
+            onDismiss = { dialog = null },
+            onStart = { chosenMin, chosenTag ->
+                onOpenSession(d.title, chosenMin, selectedDate, chosenTag, /*autoStart=*/false)
+                dialog = null
+            }
+        )
+    }
 }
+
+/** Simple state holder for the guided config dialog. */
+private data class GuidedConfigDialogState(
+    val title: String,
+    val minutes: Int,
+    val tag: String
+)
+
+/** A plain AlertDialog that lets user pick duration and confirm start. */
+@Composable
+private fun GuidedConfigDialog(
+    state: GuidedConfigDialogState,
+    onDismiss: () -> Unit,
+    onStart: (mins: Int, tag: String) -> Unit
+) {
+    // use Int-optimized state holder (IDE 的建议)
+    var mins by remember { mutableIntStateOf(state.minutes.coerceIn(listOf(3, 5, 10))) }
+    val tag = state.tag
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(state.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {   // ✅ 修复：verticalArrangement
+                Text(
+                    "A focused, guided practice. Choose your duration:",
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DurationChip(current = mins, value = 3) { mins = 3 }
+                    DurationChip(current = mins, value = 5) { mins = 5 }
+                    DurationChip(current = mins, value = 10) { mins = 10 }
+                }
+                Text("Tip: shorter sessions are great for busy days.")
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onStart(mins, tag) }) { Text("Start") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun DurationChip(current: Int, value: Int, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        border = if (current == value) ButtonDefaults.outlinedBorder else null
+    ) {
+        Text("$value min")
+    }
+}
+
+
+// helper to avoid lint error if list doesn't contain value
+private fun Int.coerceIn(choices: List<Int>) = if (this in choices) this else choices.first()

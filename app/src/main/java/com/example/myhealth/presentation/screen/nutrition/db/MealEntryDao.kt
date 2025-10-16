@@ -1,4 +1,4 @@
-package com.example.myhealth.data.nutrition.db
+package com.example.myhealth.presentation.screen.nutrition.db
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow

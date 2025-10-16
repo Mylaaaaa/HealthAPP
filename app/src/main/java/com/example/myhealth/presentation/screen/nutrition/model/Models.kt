@@ -1,4 +1,4 @@
-package com.example.myhealth.data.nutrition.model
+package com.example.myhealth.presentation.screen.nutrition.model
 
 // Simple nutrient container (per 100g for a food item).
 data class Nutrient(

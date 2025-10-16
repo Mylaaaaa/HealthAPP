@@ -1,9 +1,9 @@
-package com.example.myhealth.data.nutrition.db
+package com.example.myhealth.presentation.screen.nutrition.db
 
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import com.example.myhealth.data.nutrition.MealType
+import com.example.myhealth.presentation.screen.nutrition.MealType
 import java.time.LocalDate
 
 // User meal logs (date + meal type + food code + grams).

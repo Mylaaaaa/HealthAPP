@@ -1,7 +1,7 @@
-package com.example.myhealth.data.nutrition.db
+package com.example.myhealth.presentation.screen.nutrition.db
 
 import androidx.room.TypeConverter
-import com.example.myhealth.data.nutrition.MealType
+import com.example.myhealth.presentation.screen.nutrition.MealType
 import java.time.LocalDate
 
 // Room converters for LocalDate and MealType.

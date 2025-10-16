@@ -1,5 +1,7 @@
 package com.example.myhealth.presentation.screen.nutrition
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.isSystemInDarkTheme
 import android.app.DatePickerDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -29,7 +31,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myhealth.presentation.screen.nutrition.MealType
 import com.example.myhealth.presentation.screen.nutrition.db.ConditionEntity
 import com.example.myhealth.presentation.screen.nutrition.db.FoodEntity
-import com.example.myhealth.presentation.screen.nutrition.db.NutritionDatabase
 import java.time.LocalDate
 import kotlin.math.roundToInt
 
@@ -58,14 +59,17 @@ fun NutritionScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Nutrition", fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
+                backgroundColor = MaterialTheme.colors.primary,
+                contentColor = MaterialTheme.colors.onPrimary,
+                elevation = 4.dp,
+                title = {
+                    Text("Nutrition Tracker", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                },
                 actions = {
                     IconButton(onClick = { datePicker.show() }) {
-                        Icon(Icons.Default.Today, contentDescription = "Pick date")
+                        Icon(Icons.Default.Today, contentDescription = "Pick date", tint = MaterialTheme.colors.onPrimary)
                     }
-                },
-                elevation = 0.dp,
-                backgroundColor = MaterialTheme.colors.surface
+                }
             )
         },
         floatingActionButton = {
@@ -75,54 +79,82 @@ fun NutritionScreen(
         }
     ) { padding ->
         Column(
-            Modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // -------- Health Conditions --------
-            ConditionSection(
-                conditions = conditions,
-                onAdd = { vm.addCondition(it) },
-                onToggle = { id, sel -> vm.toggleCondition(id, sel) },
-                onRemove = { id -> vm.removeCondition(id) }
-            )
-
-            Spacer(Modifier.height(8.dp))
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = 3.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    ConditionSection(
+                        conditions = conditions,
+                        onAdd = { vm.addCondition(it) },
+                        onToggle = { id, sel -> vm.toggleCondition(id, sel) },
+                        onRemove = { id -> vm.removeCondition(id) }
+                    )
+                }
+            }
 
             // -------- Recommended Foods --------
-            if (recommended.isNotEmpty()) {
-                Text("Recommended Foods", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(recommended) { f ->
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.08f)),
-                            modifier = Modifier.clickable {
-                                preselectFood = f
-                                showAdd = true
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = 3.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Recommended Foods", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    if (recommended.isEmpty()) {
+                        Text(
+                            "No recommended foods yet. Add your health conditions to get suggestions.",
+                            style = MaterialTheme.typography.caption
+                        )
+                    } else {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(recommended) { f ->
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.08f)),
+                                    color = MaterialTheme.colors.primary.copy(alpha = 0.06f),
+                                    modifier = Modifier.clickable {
+                                        preselectFood = f
+                                        showAdd = true
+                                    }
+                                ) {
+                                    Text(
+                                        f.name,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        style = MaterialTheme.typography.body2.copy(
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    )
+                                }
                             }
-                        ) {
-                            Text(
-                                f.name,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                style = MaterialTheme.typography.body2
-                            )
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
             }
 
-            // -------- Summary Chips --------
+            // -------- Daily Summary --------
+            Divider()
+            Text(
+                "Daily Summary",
+                style = MaterialTheme.typography.subtitle1.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            )
             SummaryRow(totals = totals)
-
-            Spacer(Modifier.height(8.dp))
 
             // -------- Meals List --------
             Card(
-                elevation = 2.dp,
+                elevation = 3.dp,
                 shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.06f)),
                 modifier = Modifier.fillMaxWidth()
@@ -281,33 +313,76 @@ private fun ConditionChip(
 // ------------ Summary chips ------------
 @Composable
 private fun SummaryRow(totals: NutritionRepository.Totals) {
+    // Pastel backgrounds for light theme; in dark theme we tone them down
+    val bgCalories = pastel(Color(0xFFFFE8D5))   // soft orange
+    val bgCarbs    = pastel(Color(0xFFFEF7D1))   // soft yellow
+    val bgProtein  = pastel(Color(0xFFE3F2FD))   // soft blue
+    val bgFat      = pastel(Color(0xFFFCE4EC))   // soft pink
+
     Row(
         Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        SummaryChip(title = "Calories", value = "${totals.kcal} kcal")
-        SummaryChip(title = "Carbs", value = "%.1f g".format(totals.carb))
-        SummaryChip(title = "Protein", value = "%.1f g".format(totals.protein))
-        SummaryChip(title = "Fat", value = "%.1f g".format(totals.fat))
+        SummaryChip(title = "Calories", value = "${totals.kcal} kcal", background = bgCalories)
+        SummaryChip(title = "Carbs",    value = "%.1f g".format(totals.carb),    background = bgCarbs)
+        SummaryChip(title = "Protein",  value = "%.1f g".format(totals.protein), background = bgProtein)
+        SummaryChip(title = "Fat",      value = "%.1f g".format(totals.fat),     background = bgFat)
     }
 }
 
+/**
+ * Flat, modern chip with pastel background.
+ * No borders / no gray halo; adjusts text colors for readability.
+ */
 @Composable
-private fun SummaryChip(title: String, value: String) {
+private fun SummaryChip(
+    title: String,
+    value: String,
+    background: Color
+) {
+    val onSurface = MaterialTheme.colors.onSurface
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        elevation = 0.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.06f))
+        shape = RoundedCornerShape(14.dp),
+        color = background,     // pastel fill
+        elevation = 0.dp,       // no shadow edge
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .defaultMinSize(minWidth = 86.dp)
     ) {
         Column(
-            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(title, style = MaterialTheme.typography.caption)
-            Text(value, style = MaterialTheme.typography.subtitle2.copy(fontWeight = FontWeight.Bold))
+            Text(
+                title,
+                style = MaterialTheme.typography.caption.copy(
+                    color = onSurface.copy(alpha = 0.70f)
+                )
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.subtitle2.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = onSurface
+                )
+            )
         }
+    }
+}
+
+/**
+ * Use a vivid pastel in light theme; in dark theme fall back to a subtle tinted surface.
+ */
+@Composable
+private fun pastel(lightColor: Color): Color {
+    return if (!isSystemInDarkTheme()) {
+        lightColor
+    } else {
+        // very subtle tint over surface in dark mode
+        MaterialTheme.colors.surface.copy(alpha = 0.08f)
     }
 }
 
@@ -331,7 +406,7 @@ private fun MealBadge(type: MealType) {
     }
 }
 
-// ------------ Add Food Dialog (supports preselected food) ------------
+// ------------ Add Food Dialog ------------
 @Composable
 private fun AddFoodDialog(
     preselected: FoodEntity? = null,
@@ -346,14 +421,12 @@ private fun AddFoodDialog(
     var selected by remember { mutableStateOf<FoodEntity?>(preselected) }
     var meal by remember { mutableStateOf(MealType.Breakfast) }
 
-    // Ensure seed once when dialog opens (if table empty)
     LaunchedEffect(Unit) {
         if (db.foodDao().count() == 0) {
             db.foodDao().upsertAll(com.example.myhealth.presentation.screen.nutrition.db.Prepopulate.foods())
         }
     }
 
-    // Show all foods when query is blank; otherwise filter by query
     val foodsFlow = remember(query) {
         if (query.isBlank()) db.foodDao().getAll() else db.foodDao().search(query)
     }
@@ -381,7 +454,6 @@ private fun AddFoodDialog(
                         .heightIn(max = 220.dp)
                 ) {
                     if (foods.isEmpty()) {
-                        // Rare: immediately after seed or user typed a very narrow query
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             Text("No results", modifier = Modifier.padding(12.dp))
                         }
@@ -453,7 +525,6 @@ private fun AddFoodDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
-
 
 @Composable
 private fun FilterChip(selected: Boolean, onClick: () -> Unit, text: String) {

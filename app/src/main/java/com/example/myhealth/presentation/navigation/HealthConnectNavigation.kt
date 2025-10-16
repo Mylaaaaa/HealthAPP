@@ -320,7 +320,9 @@ fun HealthConnectNavigation(
 
         // Other tabs
         composable(Screen.Dashboard.route) { DashboardScreen() }
-        composable(Screen.Nutrition.route) { NutritionScreen() }
+        composable(Screen.Nutrition.route) {
+            com.example.myhealth.presentation.screen.nutrition.NutritionRootScreen()
+        }
         composable(Screen.Mind.route)      { MindScreen() }
         composable(Screen.Reports.route)   { ReportsScreen() }
     }

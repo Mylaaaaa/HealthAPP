@@ -318,6 +318,8 @@ fun HealthConnectNavigation(
         composable(Screen.Nutrition.route) {
             com.example.myhealth.presentation.screen.nutrition.NutritionRootScreen()
         }
-        composable(Screen.Mind.route)      { MindScreen() }
+        composable(Screen.Mind.route) {
+            com.example.myhealth.presentation.screen.mind.MindRootScreen()
+        }
     }
 }

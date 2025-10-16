@@ -19,6 +19,8 @@ plugins {
     id 'kotlin-android'
 }
 
+apply plugin: 'kotlin-kapt'
+
 android {
     compileSdk 35
 
@@ -99,4 +101,18 @@ dependencies {
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.2"
     implementation "com.google.accompanist:accompanist-systemuicontroller:0.36.0"
 
+    // Room
+    implementation "androidx.room:room-runtime:2.6.1"
+    kapt "androidx.room:room-compiler:2.6.1"
+    implementation "androidx.room:room-ktx:2.6.1"
+
+    // Lifecycle + ViewModel (+ Compose VM interop)
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.4"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4"
+
+    // Coroutines
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
 }
+
+

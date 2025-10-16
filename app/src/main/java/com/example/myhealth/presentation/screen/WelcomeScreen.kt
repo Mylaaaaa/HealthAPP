@@ -246,17 +246,15 @@ fun WelcomeScreen(
         // ---------- Feature grid (4 columns, compact & lively) ----------
         // ---------- Feature grid (4 columns, compact & lively) ----------
         val entries = listOf(
-            NavEntry(Screen.Dashboard,        "Dashboard",         Icons.Filled.Dashboard),
             NavEntry(Screen.ExerciseSessions,  "Exercise sessions", Icons.Filled.FitnessCenter),
             NavEntry(Screen.SleepSessions,     "Sleep sessions",    Icons.Filled.Hotel),
             NavEntry(Screen.Nutrition,         "Nutrition",         Icons.Filled.Restaurant),
             NavEntry(Screen.Mind,              "Mindfulness",       Icons.Filled.SelfImprovement),
-            NavEntry(Screen.Reports,           "Reports",           Icons.Filled.Assessment),
             NavEntry(Screen.InputReadings,     "Record weight",     Icons.Filled.Accessibility),
             NavEntry(Screen.SettingsScreen,    "Settings",          Icons.Filled.Settings)
         )
 
-        val columns = 4
+        val columns = 3
         val itemHeightDp = 108
         val vSpacing = 12
         val contentPaddingV = 12
@@ -350,7 +348,7 @@ fun WelcomeScreen(
                     time = it.timeText
                 )
             },
-            onViewAll = { navController.navigate(Screen.Reports.route) },
+            onViewAll = { navController.navigate(Screen.ExerciseSessions.route) },
             onItemClick = { icon ->
                 when (icon) {
                     Icons.Filled.FitnessCenter -> navController.navigate(Screen.ExerciseSessions.route)

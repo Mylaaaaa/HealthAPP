@@ -84,10 +84,8 @@ fun Drawer(
             Screen.SleepSessions,
             Screen.InputReadings,
             Screen.WeightRecords,
-            Screen.Dashboard,
             Screen.Nutrition,
             Screen.Mind,
-            Screen.Reports
         ).filter { it.hasMenuItem }
 
         primaryItems.forEach { item ->

@@ -1,5 +1,4 @@
 package com.example.myhealth.presentation.navigation
-import androidx.compose.runtime.getValue
 import com.example.myhealth.presentation.home.HomeHost
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.ScaffoldState
@@ -34,10 +33,7 @@ import com.example.myhealth.presentation.screen.recordlist.SeriesRecordsType
 import com.example.myhealth.presentation.screen.sleepsession.SleepSessionScreen
 import com.example.myhealth.presentation.screen.sleepsession.SleepSessionViewModel
 import com.example.myhealth.presentation.screen.sleepsession.SleepSessionViewModelFactory
-import com.example.myhealth.presentation.screen.dashboard.DashboardScreen
-import com.example.myhealth.presentation.screen.nutrition.NutritionScreen
 import com.example.myhealth.presentation.screen.mind.MindScreen
-import com.example.myhealth.presentation.screen.reports.ReportsScreen
 import com.example.myhealth.showExceptionSnackbar
 import kotlinx.coroutines.launch
 
@@ -319,11 +315,9 @@ fun HealthConnectNavigation(
         }
 
         // Other tabs
-        composable(Screen.Dashboard.route) { DashboardScreen() }
         composable(Screen.Nutrition.route) {
             com.example.myhealth.presentation.screen.nutrition.NutritionRootScreen()
         }
         composable(Screen.Mind.route)      { MindScreen() }
-        composable(Screen.Reports.route)   { ReportsScreen() }
     }
 }

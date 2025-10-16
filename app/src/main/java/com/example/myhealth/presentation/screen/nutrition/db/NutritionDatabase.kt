@@ -1,4 +1,4 @@
-package com.example.myhealth.data.nutrition.db
+package com.example.myhealth.presentation.screen.nutrition.db
 
 import android.content.Context
 import androidx.room.Database
@@ -10,16 +10,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-// Room database for nutrition logging (foods + meal entries).
+/**
+ * Room database for nutrition logging.
+ * Includes Foods, MealEntries, and Conditions.
+ */
 @Database(
-    entities = [FoodEntity::class, MealEntryEntity::class],
-    version = 1,
+    entities = [FoodEntity::class, MealEntryEntity::class, ConditionEntity::class],
+    version = 2, // bumped because we added a new table
     exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class NutritionDatabase : RoomDatabase() {
+
     abstract fun foodDao(): FoodDao
     abstract fun mealEntryDao(): MealEntryDao
+    abstract fun conditionDao(): ConditionDao
 
     companion object {
         @Volatile private var INSTANCE: NutritionDatabase? = null
@@ -31,17 +36,20 @@ abstract class NutritionDatabase : RoomDatabase() {
                     NutritionDatabase::class.java,
                     "nutrition.db"
                 )
+                    // Dev-friendly: wipe on incompatible schema change.
+                    // Provide real Migration in production.
+                    .fallbackToDestructiveMigration()
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
-                            // Pre-populate the foods table on first DB creation.
                             val appDb = get(context)
                             CoroutineScope(Dispatchers.IO).launch {
                                 appDb.foodDao().upsertAll(Prepopulate.foods())
                             }
                         }
                     })
-                    .build().also { INSTANCE = it }
+                    .build()
+                    .also { INSTANCE = it }
             }
     }
 }

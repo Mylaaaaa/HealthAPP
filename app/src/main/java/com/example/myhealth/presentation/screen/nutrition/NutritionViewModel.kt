@@ -3,39 +3,62 @@ package com.example.myhealth.presentation.screen.nutrition
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.myhealth.data.nutrition.MealType
-import com.example.myhealth.data.nutrition.NutritionRepository
-import com.example.myhealth.data.nutrition.db.NutritionDatabase
-import com.example.myhealth.data.nutrition.db.MealEntryWithFood
+import com.example.myhealth.presentation.screen.nutrition.db.ConditionEntity
+import com.example.myhealth.presentation.screen.nutrition.db.MealEntryWithFood
+import com.example.myhealth.presentation.screen.nutrition.db.NutritionDatabase
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-// AndroidViewModel so we can easily access application context for Room.
 class NutritionViewModel(app: Application) : AndroidViewModel(app) {
 
     private val db = NutritionDatabase.get(app)
-    private val repo = NutritionRepository(db.foodDao(), db.mealEntryDao())
+    private val repo = NutritionRepository(db.foodDao(), db.mealEntryDao(), db.conditionDao())
 
     private val _date = MutableStateFlow(LocalDate.now())
     val date: StateFlow<LocalDate> = _date.asStateFlow()
 
-    // Meals for the selected date.
     val meals: StateFlow<List<MealEntryWithFood>> =
         date.flatMapLatest { d -> repo.observeMeals(d) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    // Totals derived from current meals.
     val totals = meals.map { repo.totals(it) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repo.totals(emptyList()))
+        .stateIn(viewModelScope, SharingStarted.Eagerly, repo.totals(emptyList()))
+
+    // Conditions
+    val allConditions: StateFlow<List<ConditionEntity>> =
+        repo.observeAllConditions()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val recommendedFoods =
+        repo.observeRecommendedFoods()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun setDate(d: LocalDate) { _date.value = d }
 
-    fun addMeal(meal: MealType, foodCode: String, grams: Int) {
+    fun addMeal(meal: MealType, foodCode: String, grams: Int) =
         viewModelScope.launch { repo.addMeal(_date.value, meal, foodCode, grams) }
-    }
 
-    fun deleteMeal(id: Long) {
+    fun deleteMeal(id: Long) =
         viewModelScope.launch { repo.deleteMeal(id) }
+
+    fun addCondition(name: String) =
+        viewModelScope.launch { if (name.isNotBlank()) repo.addCondition(name) }
+
+    fun toggleCondition(id: Long, selected: Boolean) =
+        viewModelScope.launch { repo.setConditionSelected(id, selected) }
+
+    fun removeCondition(id: Long) =
+        viewModelScope.launch { repo.removeCondition(id) }
+
+    init {
+        // Seed foods when table is empty so the Add dialog is never blank
+        viewModelScope.launch {
+            if (db.foodDao().count() == 0) {
+                db.foodDao().upsertAll(
+                    com.example.myhealth.presentation.screen.nutrition.db.Prepopulate.foods()
+                )
+            }
+        }
     }
 }

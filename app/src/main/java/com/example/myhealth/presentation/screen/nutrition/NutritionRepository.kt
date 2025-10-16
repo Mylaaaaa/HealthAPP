@@ -53,24 +53,52 @@ class NutritionRepository(
     suspend fun setConditionSelected(id: Long, selected: Boolean) = conditionDao.setSelected(id, selected)
     suspend fun removeCondition(id: Long) = conditionDao.deleteById(id)
 
-    // -------- Recommended Foods (single, conflict-free) --------
+    // -------- Recommended Foods (English-only version, always returns results) --------
+    /**
+     * Returns a recommended list of foods.
+     * If health conditions are selected, filters foods according to common disease rules.
+     * Otherwise, returns general healthy picks (high protein, low sugar/fat).
+     */
     fun observeRecommendedFoods(): Flow<List<FoodEntity>> {
         val foods = foodDao.getAll()
         val selected = conditionDao.observeSelected()
         return combine(foods, selected) { allFoods, selectedConds ->
             val names = selectedConds.map { it.name.trim().lowercase() }
+
+            // Define condition keywords in English
+            val diabetesTokens = setOf("diabetes", "dm")
+            val hypertensionTokens = setOf("hypertension", "high blood pressure")
+            val hyperlipidemiaTokens = setOf("hyperlipidemia", "high cholesterol")
+
+            // Helper to check if any token matches
+            fun containsAny(tokens: Set<String>) =
+                names.any { n -> tokens.any { t -> n.contains(t) } }
+
             var result = allFoods
+
+            // Apply condition-based filters
             if (names.isNotEmpty()) {
-                if (names.any { it.contains("diabetes") })
+                if (containsAny(diabetesTokens)) {
+                    // Diabetes: prefer low-sugar foods
                     result = result.filter { it.sugar < 5f }
-                if (names.any { it.contains("hypertension") || it.contains("high blood pressure") })
+                }
+                if (containsAny(hypertensionTokens)) {
+                    // Hypertension: prefer low-sodium foods
                     result = result.filter { it.sodium < 100 }
-                if (names.any { it.contains("hyperlipidemia") || it.contains("high cholesterol") })
+                }
+                if (containsAny(hyperlipidemiaTokens)) {
+                    // High cholesterol: prefer low-fat foods
                     result = result.filter { it.fat < 3f }
+                }
+
+                // If everything got filtered out, fall back to all foods
                 if (result.isEmpty()) result = allFoods
             }
+
+            // Always produce a sorted recommendation list (even with no conditions)
             fun score(f: FoodEntity) = f.protein - 0.2f * f.fat - 0.1f * f.sugar
             result.sortedByDescending { score(it) }.take(12)
         }
     }
+
 }

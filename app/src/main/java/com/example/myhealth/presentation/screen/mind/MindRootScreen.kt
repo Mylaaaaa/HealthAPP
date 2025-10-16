@@ -1,5 +1,6 @@
 package com.example.myhealth.presentation.screen.mind
 
+import android.app.Application
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
@@ -9,6 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -22,13 +26,20 @@ import java.time.LocalDate
 /**
  * MindRootScreen
  *
- * - Bottom tabs: Overview / State
- * - Extra route: mind_session_timer (with title, mins, date ISO, tag, and autoStart)
+ * - Creates ONE shared MindViewModel and passes it down to all child screens.
+ * - Keeps the bottom tabs (Overview / State).
+ * - Timer route receives title/mins/date/tag/auto and also the SAME vm instance.
  */
 @Composable
 fun MindRootScreen() {
     val nav = rememberNavController()
     val current by nav.currentBackStackEntryAsState()
+
+    // ✅ Hoist a SINGLE MindViewModel at the root
+    val app = LocalContext.current.applicationContext as Application
+    val vm: MindViewModel = viewModel(
+        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(app)
+    )
 
     Scaffold(
         backgroundColor = Color.White,
@@ -63,26 +74,30 @@ fun MindRootScreen() {
             startDestination = "mind_overview",
             modifier = Modifier.padding(inner)
         ) {
-            // Overview
+            // Overview (uses the shared vm)
             composable("mind_overview") {
                 MindOverviewScreen(
                     onBack = { nav.popBackStack() },
                     onOpenSession = { title, mins, date, tag, autoStart ->
                         val encodedTitle = URLEncoder.encode(title, StandardCharsets.UTF_8.name())
-                        val dateIso = date.toString() // yyyy-MM-dd
+                        val dateIso = date.toString()
                         nav.navigate(
                             "mind_session_timer?title=$encodedTitle&mins=$mins&date=$dateIso&tag=$tag&auto=$autoStart"
                         )
-                    }
+                    },
+                    vm = vm // ✅ pass the shared vm
                 )
             }
 
-            // State
+            // State (uses the shared vm)
             composable("mind_state") {
-                MindStateScreen(onBack = { nav.popBackStack() })
+                MindStateScreen(
+                    onBack = { nav.popBackStack() },
+                    vm = vm // ✅ pass the shared vm
+                )
             }
 
-            // Timer
+            // Timer (also uses the shared vm so date/records update everywhere)
             composable(
                 route = "mind_session_timer?title={title}&mins={mins}&date={date}&tag={tag}&auto={auto}",
                 arguments = listOf(
@@ -105,7 +120,8 @@ fun MindRootScreen() {
                     dateIso = dateIso,
                     tag = tag,
                     autoStart = auto,
-                    onBack = { nav.popBackStack() }
+                    onBack = { nav.popBackStack() },
+                    vm = vm // ✅ pass the SAME vm instance
                 )
             }
         }

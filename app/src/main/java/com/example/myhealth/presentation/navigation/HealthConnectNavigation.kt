@@ -131,6 +131,7 @@ fun HealthConnectNavigation(
                 }
 
             ExerciseSessionScreen(
+                healthConnectManager = healthConnectManager,
                 permissions = permissions,
                 permissionsGranted = permissionsGranted,
                 backgroundReadAvailable = backgroundReadAvailable,

@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.permission.HealthPermission
 import com.example.myhealth.data.ExerciseSession
+import com.example.myhealth.data.HealthConnectManager
+
 
 /**
  * Exercise hub with four tabs:
@@ -41,6 +43,7 @@ import com.example.myhealth.data.ExerciseSession
 @Composable
 fun ExerciseSessionScreen(
     modifier: Modifier = Modifier,
+    healthConnectManager: HealthConnectManager,
     // Backward-compat params kept to avoid breaking call sites
     permissions: Set<String> = emptySet(),
     permissionsGranted: Boolean = false,
@@ -128,10 +131,43 @@ fun ExerciseSessionScreen(
                         onDeleteClick = onDeleteClick
                     )
                     ExerciseTab.Courses -> ExerciseCoursesScreen(Modifier.padding(16.dp))
-                    ExerciseTab.Stats -> ExerciseStatsScreen(
-                        modifier = Modifier.padding(16.dp),
-                        sessions = sessionsList
-                    )
+                    ExerciseTab.Stats -> {
+                        val zone = java.time.ZoneId.systemDefault()
+                        val today = java.time.LocalDate.now(zone)
+                        val weekStart = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+
+                        val defaultMinutes = 30
+
+                        val syntheticFromPlan: List<ExerciseSession> = remember(planStore, sessionsList) {
+                            (0..6).flatMap { d ->
+                                val date = weekStart.plusDays(d.toLong())
+                                val tasks = planStore.getTasks(date)
+                                val anyDone = tasks.any { it.completed }
+                                if (anyDone) {
+                                    val start = date.atTime(12, 0).atZone(zone)
+                                    val end   = start.plusMinutes(defaultMinutes.toLong())
+                                    val title = (planStore.getDayTitle(date) ?: "").ifBlank { "Planned" }
+                                    listOf(
+                                        ExerciseSession(
+                                            id = "plan-$date",
+                                            title = "$title (planned)",
+                                            startTime = start,
+                                            endTime = end,
+                                            sourceAppInfo = null
+                                        )
+                                    )
+                                } else emptyList()
+                            }
+                        }
+                        val merged = remember(sessionsList, syntheticFromPlan) {
+                            (sessionsList + syntheticFromPlan).sortedBy { it.startTime }
+                        }
+
+                        ExerciseStatsScreen(
+                            modifier = Modifier.padding(16.dp),
+                            sessions = merged
+                        )
+                    }
                 }
             }
         }

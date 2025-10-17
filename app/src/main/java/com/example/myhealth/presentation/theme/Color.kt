@@ -1,21 +1,29 @@
-/*
- * Copyright 2024 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.example.myhealth.presentation.theme
 
 import androidx.compose.ui.graphics.Color
 
-val HealthConnectGreen = Color(0xFF3DDB85)
-val HealthConnectBlue = Color(0xFF4285F4)
+/**
+ * Brand colors for MyHealth (Google Health Connect style)
+ * Define both accent and supporting shades for consistent theming.
+ */
+
+val HealthConnectBlue = Color(0xFF4285F4)     // Main brand blue
+val HealthConnectBlueLight = Color(0xFF90CAF9)
+val HealthConnectBlueDark = Color(0xFF1565C0)
+
+val HealthConnectGreen = Color(0xFF3DDB85)    // Accent green (for success / highlights)
+val HealthConnectGreenLight = Color(0xFF80EBAA)
+val HealthConnectGreenDark = Color(0xFF009E60)
+
+// Background & surface helpers
+val HealthBackgroundLight = Color(0xFFF8FAFC) // Light theme background
+val HealthBackgroundDark = Color(0xFF0F1115)  // Dark theme background
+val HealthSurfaceLight = Color(0xFFFFFFFF)
+val HealthSurfaceDark = Color(0xFF171A1F)
+
+// Neutral tones for text/secondary UI
+val HealthGrayLight = Color(0xFF1F2328)
+val HealthGrayDark = Color(0xFFE6E8EC)
+
+// Error color
+val HealthRed = Color(0xFFB00020)

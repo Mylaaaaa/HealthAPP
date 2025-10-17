@@ -41,6 +41,8 @@ import android.content.Context
 import com.example.myhealth.presentation.screen.mind.MindRootScreen
 import java.util.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 
 
 fun showTimePicker(context: Context) {
@@ -73,8 +75,10 @@ fun showTimePicker(context: Context) {
 fun HealthConnectNavigation(
     navController: NavHostController,
     healthConnectManager: HealthConnectManager,
-    scaffoldState: ScaffoldState
-) {
+    scaffoldState: ScaffoldState,
+    themeViewModel: com.example.myhealth.presentation.theme.ThemeViewModel
+)
+ {
     val scope = rememberCoroutineScope()
 
     NavHost(navController = navController, startDestination = Screen.Home.route) {
@@ -84,7 +88,7 @@ fun HealthConnectNavigation(
             HomeHost(navController = navController)
         }
 
-        // Privacy policy (deep link preserved)
+        // Privacy policy
         composable(
             route = Screen.PrivacyPolicy.route,
             deepLinks = listOf(
@@ -94,24 +98,31 @@ fun HealthConnectNavigation(
             PrivacyPolicyScreen()
         }
 
-        // Settings
+        /* -------------------- Settings -------------------- */
         composable(Screen.SettingsScreen.route) {
-            SettingsScreen { scope.launch { healthConnectManager.revokeAllPermissions() } }
+            // Observe the theme mode from ViewModel
+            val currentMode by themeViewModel.themeMode.collectAsState()
+
+            SettingsScreen(
+                revokeAllPermissions = { scope.launch { healthConnectManager.revokeAllPermissions() } },
+                currentThemeMode = currentMode,
+                onThemeChange = { themeViewModel.setThemeMode(it) }
+            )
         }
+        /* --------------------------------------------------- */
 
         // Exercise Sessions
         composable(Screen.ExerciseSessions.route) {
             val viewModel: ExerciseSessionViewModel = viewModel(
                 factory = ExerciseSessionViewModelFactory(healthConnectManager)
             )
-
             LaunchedEffect(Unit) { viewModel.initialLoad() }
 
-            val permissionsGranted       = viewModel.permissionsGranted.value
-            val sessionsList             = viewModel.sessionsList.value
-            val permissions              = viewModel.permissions
-            val backgroundReadAvailable  = viewModel.backgroundReadAvailable.value
-            val backgroundReadGranted    = viewModel.backgroundReadGranted.value
+            val permissionsGranted = viewModel.permissionsGranted.value
+            val sessionsList = viewModel.sessionsList.value
+            val permissions = viewModel.permissions
+            val backgroundReadAvailable = viewModel.backgroundReadAvailable.value
+            val backgroundReadGranted = viewModel.backgroundReadGranted.value
 
             val onPermissionsResult = { viewModel.initialLoad() }
             val permissionsLauncher =
@@ -136,7 +147,6 @@ fun HealthConnectNavigation(
                 onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
             )
         }
-
         // Weight Records
         composable(Screen.WeightRecords.route) {
             val viewModel: InputReadingsViewModel = viewModel(

@@ -24,7 +24,6 @@ import androidx.health.connect.client.permission.HealthPermission
 import com.example.myhealth.data.ExerciseSession
 import com.example.myhealth.data.HealthConnectManager
 
-
 /**
  * Exercise hub with four tabs:
  * - Plan: weekly plan + start guided workout (Day bottom sheet -> Start guided)
@@ -35,10 +34,10 @@ import com.example.myhealth.data.HealthConnectManager
  * Guided and Summary are shown as fullscreen overlays above the tabs.
  *
  * CHANGES (non-destructive):
- * - Replaced top TabRow with a BottomNavigation bar (as per your sketch).
- * - Kept the original TabRow block in comments so nothing is lost.
- * - When saving Summary, mirror Guided completion into PlanTasksStore so
- *   the Workout page progress ring / "Completed" updates even if only one item is done.
+ * - BottomNavigation replaces top TabRow (original kept in comments).
+ * - Stats tab now reads this week's sessions from Health Connect and
+ *   merges them with today's Workout data & Plan completion.
+ * - Everything else (subcomponents/enums) is left as-is.
  */
 @Composable
 fun ExerciseSessionScreen(
@@ -59,14 +58,57 @@ fun ExerciseSessionScreen(
     onDetailsClick: (String) -> Unit = {},
     onDeleteClick: (String) -> Unit
 ) {
+    /* -----------------------------------------------------------
+     * Tab state MUST be declared before effects that depend on it.
+     * ----------------------------------------------------------- */
+    var selectedTab by rememberSaveable { mutableStateOf(ExerciseTab.Workout) }
+
+    /* -----------------------------------------------------------
+     * Stats tab — real weekly data container.
+     * We'll fill this only when user views the Stats page.
+     * ----------------------------------------------------------- */
+    var statsSessions by remember { mutableStateOf<List<ExerciseSession>>(emptyList()) }
+
+    /* -----------------------------------------------------------
+     * When Stats is selected, read this week's sessions
+     * (Monday 00:00 -> next Monday 00:00, end exclusive) from HC.
+     * Use end-exclusive to avoid nanosecond edge cases.
+     * ----------------------------------------------------------- */
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == ExerciseTab.Stats) {
+            val now = java.time.ZonedDateTime.now()
+            val weekStart = now
+                .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                .toLocalDate()
+                .atStartOfDay(now.zone)
+            val weekEndExclusive = weekStart.plusDays(7) // end-exclusive
+
+            runCatching {
+                val recs = healthConnectManager.readExerciseSessions(
+                    start = weekStart.toInstant(),
+                    end   = weekEndExclusive.toInstant()
+                )
+                statsSessions = recs.map { r ->
+                    ExerciseSession(
+                        id = r.metadata.id,
+                        title = r.title ?: "Session",
+                        startTime = r.startTime.atZone(now.zone),
+                        endTime   = r.endTime.atZone(now.zone),
+                        sourceAppInfo = null
+                    )
+                }
+            }.onFailure {
+                // Do not crash the UI; just report error and keep last good data.
+                onError(it)
+            }
+        }
+    }
+
     val appContext = LocalContext.current.applicationContext
     val progressStore = remember { PlanProgressStore(appContext) }
     // Used to reflect Guided completion on Workout page (progress ring & "Completed")
     val planStore = remember { PlanTasksStore(appContext) }
     val activeStore = remember { ActiveDayProgressStore(appContext) } // persistence for partial guided progress
-
-    // Keep your tab enum, but we'll render bottom navigation instead of TabRow
-    var selectedTab by rememberSaveable { mutableStateOf(ExerciseTab.Workout) }
 
     // Guided & Summary overlays
     val guidedVm = remember { GuidedWorkoutViewModel() }
@@ -116,6 +158,7 @@ fun ExerciseSessionScreen(
                             showGuided = true
                         }
                     )
+
                     ExerciseTab.Workout -> WorkoutPage(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                         sessionsList = sessionsList,
@@ -130,44 +173,79 @@ fun ExerciseSessionScreen(
                         onDetailsClick = onDetailsClick,
                         onDeleteClick = onDeleteClick
                     )
+
                     ExerciseTab.Courses -> ExerciseCoursesScreen(Modifier.padding(16.dp))
+
                     ExerciseTab.Stats -> {
                         val zone = java.time.ZoneId.systemDefault()
                         val today = java.time.LocalDate.now(zone)
-                        val weekStart = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                        val weekStart = today.with(
+                            java.time.temporal.TemporalAdjusters.previousOrSame(
+                                java.time.DayOfWeek.MONDAY
+                            )
+                        )
 
-                        val defaultMinutes = 30
+                        // --- Base = real sessions for the week ---
+                        // Prefer weekly Health Connect fetch (statsSessions),
+                        // fallback to sessionsList (usually "today" only).
+                        val base: List<ExerciseSession> = if (statsSessions.isNotEmpty()) {
+                            statsSessions
+                        } else {
+                            sessionsList
+                        }
 
-                        val syntheticFromPlan: List<ExerciseSession> = remember(planStore, sessionsList) {
-                            (0..6).flatMap { d ->
-                                val date = weekStart.plusDays(d.toLong())
-                                val tasks = planStore.getTasks(date)
-                                val anyDone = tasks.any { it.completed }
-                                if (anyDone) {
-                                    val start = date.atTime(12, 0).atZone(zone)
-                                    val end   = start.plusMinutes(defaultMinutes.toLong())
-                                    val title = (planStore.getDayTitle(date) ?: "").ifBlank { "Planned" }
-                                    listOf(
-                                        ExerciseSession(
-                                            id = "plan-$date",
-                                            title = "$title (planned)",
-                                            startTime = start,
-                                            endTime = end,
-                                            sourceAppInfo = null
-                                        )
+                        // Group by date to know which days already have real sessions
+                        val baseByDate: Map<java.time.LocalDate, List<ExerciseSession>> =
+                            base.groupBy { it.startTime.toLocalDate() }
+
+                        // --- Plan-derived synthetic sessions ---
+                        // Only create synthetic when:
+                        //   1) that day has NO real sessions, AND
+                        //   2) plan has completed tasks for that day.
+                        // If your task model has its own duration field, replace the calculation below.
+                        val defaultPerTaskMinutes = 30 // fallback minutes per completed task
+
+                        val syntheticFromPlan: List<ExerciseSession> = (0..6).flatMap { d ->
+                            val date = weekStart.plusDays(d.toLong())
+
+                            // Skip if real sessions exist for the day
+                            if (!baseByDate[date].isNullOrEmpty()) return@flatMap emptyList<ExerciseSession>()
+
+                            val tasks = planStore.getTasks(date)
+                            val completed = tasks.filter { it.completed }
+
+                            // If you have per-task minutes: sumOf { it.minutes ?: 0 }
+                            val minutesFromTasks = if (completed.isNotEmpty()) {
+                                completed.size * defaultPerTaskMinutes
+                            } else 0
+
+                            if (minutesFromTasks > 0) {
+                                val start = date.atTime(12, 0).atZone(zone) // midday placeholder
+                                val end   = start.plusMinutes(minutesFromTasks.toLong())
+                                val title = (planStore.getDayTitle(date) ?: "").ifBlank { "Planned" }
+                                listOf(
+                                    ExerciseSession(
+                                        id = "plan-$date",
+                                        title = "$title (planned)",
+                                        startTime = start,
+                                        endTime = end,
+                                        sourceAppInfo = null
                                     )
-                                } else emptyList()
+                                )
+                            } else {
+                                emptyList()
                             }
                         }
-                        val merged = remember(sessionsList, syntheticFromPlan) {
-                            (sessionsList + syntheticFromPlan).sortedBy { it.startTime }
-                        }
+
+                        // ---- Merge & sort: real + (only-missing-days) planned ----
+                        val merged = (base + syntheticFromPlan).sortedBy { it.startTime }
 
                         ExerciseStatsScreen(
                             modifier = Modifier.padding(16.dp),
                             sessions = merged
                         )
                     }
+
                 }
             }
         }
@@ -263,6 +341,7 @@ fun ExerciseSessionScreen(
         }
     }
 }
+
 // === Restore missing WorkoutPage wrapper ===
 @Composable
 fun WorkoutPage(

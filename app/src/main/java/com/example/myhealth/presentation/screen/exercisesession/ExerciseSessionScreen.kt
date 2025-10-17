@@ -35,9 +35,13 @@ import com.example.myhealth.data.HealthConnectManager
  *
  * CHANGES (non-destructive):
  * - BottomNavigation replaces top TabRow (original kept in comments).
- * - Stats tab now reads this week's sessions from Health Connect and
- *   merges them with today's Workout data & Plan completion.
- * - Everything else (subcomponents/enums) is left as-is.
+ * - Stats tab reads this week's sessions from Health Connect (end-exclusive)
+ *   and merges them with today's Workout data & Plan completion.
+ * - New: when starting Guided from a Plan day (e.g., open Wednesday on Saturday),
+ *   we compute the real LocalDate for that Plan day from its title (Mon..Sun),
+ *   store it in targetPlanDate, and write back to THAT date on summary save.
+ * - If all guided items are DONE, mark the whole day's plan tasks completed
+ *   so your "Completed" badge shows immediately.
  */
 @Composable
 fun ExerciseSessionScreen(
@@ -64,6 +68,13 @@ fun ExerciseSessionScreen(
     var selectedTab by rememberSaveable { mutableStateOf(ExerciseTab.Workout) }
 
     /* -----------------------------------------------------------
+     * Remember the LocalDate the guided workout belongs to when the
+     * user starts from the Plan tab (e.g., Wednesday while today is Saturday).
+     * We derive the date from PlanDay.title = Mon/Tue/.../Sun.
+     * ----------------------------------------------------------- */
+    var targetPlanDate by rememberSaveable { mutableStateOf<LocalDate?>(null) }
+
+    /* -----------------------------------------------------------
      * Stats tab — real weekly data container.
      * We'll fill this only when user views the Stats page.
      * ----------------------------------------------------------- */
@@ -72,7 +83,7 @@ fun ExerciseSessionScreen(
     /* -----------------------------------------------------------
      * When Stats is selected, read this week's sessions
      * (Monday 00:00 -> next Monday 00:00, end exclusive) from HC.
-     * Use end-exclusive to avoid nanosecond edge cases.
+     * Using end-exclusive avoids nanosecond edge cases on the boundary.
      * ----------------------------------------------------------- */
     LaunchedEffect(selectedTab) {
         if (selectedTab == ExerciseTab.Stats) {
@@ -152,13 +163,14 @@ fun ExerciseSessionScreen(
                 when (selectedTab) {
                     ExerciseTab.Plan -> ExercisePlanScreen(
                         modifier = Modifier.padding(16.dp),
-                        // When user taps “Start guided” for a day
-                        onStartDay = { day ->
+                        onStartDay = { day, ignoredDateFromPlanScreen ->
+                            // Map plan card title to a real date in this week, store for save.
+                            targetPlanDate = resolveDateFromPlanTitle(day.title)
+                            // Start guided workout using the selected plan day content.
                             guidedVm.startFromPlan(day)
                             showGuided = true
                         }
                     )
-
                     ExerciseTab.Workout -> WorkoutPage(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                         sessionsList = sessionsList,
@@ -186,8 +198,6 @@ fun ExerciseSessionScreen(
                         )
 
                         // --- Base = real sessions for the week ---
-                        // Prefer weekly Health Connect fetch (statsSessions),
-                        // fallback to sessionsList (usually "today" only).
                         val base: List<ExerciseSession> = if (statsSessions.isNotEmpty()) {
                             statsSessions
                         } else {
@@ -202,7 +212,6 @@ fun ExerciseSessionScreen(
                         // Only create synthetic when:
                         //   1) that day has NO real sessions, AND
                         //   2) plan has completed tasks for that day.
-                        // If your task model has its own duration field, replace the calculation below.
                         val defaultPerTaskMinutes = 30 // fallback minutes per completed task
 
                         val syntheticFromPlan: List<ExerciseSession> = (0..6).flatMap { d ->
@@ -214,7 +223,6 @@ fun ExerciseSessionScreen(
                             val tasks = planStore.getTasks(date)
                             val completed = tasks.filter { it.completed }
 
-                            // If you have per-task minutes: sumOf { it.minutes ?: 0 }
                             val minutesFromTasks = if (completed.isNotEmpty()) {
                                 completed.size * defaultPerTaskMinutes
                             } else 0
@@ -262,6 +270,7 @@ fun ExerciseSessionScreen(
                         guidedVm.clear()
                         showGuided = false
                         previewSummary = null
+                        // We intentionally do not clear targetPlanDate here so the user can resume.
                     },
                     onFinishRequest = {
                         // open Summary preview
@@ -292,35 +301,51 @@ fun ExerciseSessionScreen(
                 onSave = { rpe, notes ->
                     // Persist finished workout to history
                     val saved = guidedVm.finish(overallRpe = rpe, notes = notes)
+
+                    // --- Write back to the Plan day the user actually started from ---
+                    val dateToCommit = targetPlanDate ?: LocalDate.now()
+
                     progressStore.markDone(
-                        LocalDate.now(),
+                        dateToCommit,
                         saved?.title ?: previewSummary!!.title
                     )
                     // Clear partial progress for this day
                     activeStore.clear(
-                        LocalDate.now(),
+                        dateToCommit,
                         saved?.title ?: previewSummary!!.title
                     )
 
-                    // === Mirror Guided completion back into today's PlanTasksStore ===
-                    // Reason: Workout page progress ring & "Completed" read from PlanTasksStore.
-                    // We set per-item completion so even partial completion is reflected immediately.
-                    val today = LocalDate.now()
-                    val currentTasks = planStore.getTasks(today)
+                    // === Mirror Guided completion back into that day's PlanTasksStore ===
+                    // Reason: Plan UI (progress ring & "Completed" badge) reads from PlanTasksStore.
+                    val currentTasks = planStore.getTasks(dateToCommit)
                     if (currentTasks.isNotEmpty()) {
                         // Keep quick-added (synthetic) tasks intact; update only planned items by index order.
                         val (planned, synthetic) = currentTasks.partition { it.type != "synthetic" }
+
                         val finished = (saved ?: previewSummary!!).items
-                        val updatedPlanned = planned.mapIndexed { index, t ->
-                            val st = finished.getOrNull(index)?.status
-                            // If you only want DONE to count: (st == ItemStatus.DONE)
-                            val doneFlag = (st == ItemStatus.DONE)
-                            t.copy(completed = doneFlag)
+                        val allDone = finished.isNotEmpty() && finished.all { it.status == ItemStatus.DONE }
+
+                        // If ALL guided items are DONE -> mark whole day done so "Completed" badge lights up
+                        val updatedPlanned = if (allDone) {
+                            planned.map { it.copy(completed = true) }
+                        } else {
+                            planned.mapIndexed { index, t ->
+                                val st = finished.getOrNull(index)?.status
+                                val doneFlag = (st == ItemStatus.DONE)
+                                t.copy(completed = doneFlag)
+                            }
                         }
+
+                        val updatedSynthetic = if (allDone) {
+                            synthetic.map { it.copy(completed = true) }
+                        } else {
+                            synthetic
+                        }
+
                         planStore.setTasks(
-                            date = today,
-                            dayTitle = planStore.getDayTitle(today),
-                            tasks = updatedPlanned + synthetic
+                            date = dateToCommit,
+                            dayTitle = planStore.getDayTitle(dateToCommit),
+                            tasks = updatedPlanned + updatedSynthetic
                         )
                     }
                     // === end mirror ===
@@ -329,6 +354,10 @@ fun ExerciseSessionScreen(
                     previewSummary = null
                     showSummary = false
                     guidedVm.clear()
+
+                    // After commit, reset the captured date
+                    targetPlanDate = null
+
                     selectedTab = ExerciseTab.Plan
                 },
                 onClose = {
@@ -367,7 +396,6 @@ fun WorkoutPage(
 }
 
 // ===== Sub-components (Material 2) =====
-// (All your original helper composables & enums are kept below.)
 
 @Composable
 private fun HeroSectionM2(

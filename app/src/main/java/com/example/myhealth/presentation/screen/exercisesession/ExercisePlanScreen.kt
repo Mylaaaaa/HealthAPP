@@ -33,67 +33,51 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 
 /* ---------------------------------------------------------------------------
-   Planner screen
-   - First time: multi-step wizard (rich questionnaire)
-   - After saved: overview (chips + weekly plan cards)
-   - Tap a day card -> show Day Plan detail (BottomSheet) with actions.
-   - All comments are in English for submission.
+   ExercisePlanScreen (fixed, per-day safe version)
+   - First time: multi-step wizard.
+   - After saved: weekly overview + day sheet.
+   - IMPORTANT: All completion changes apply to THE SELECTED DATE ONLY.
    --------------------------------------------------------------------------- */
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun ExercisePlanScreen(
     modifier: Modifier = Modifier,
-    // Fired when user taps "Start guided" on a day plan (parent can navigate).
-    onStartDay: (PlanDay) -> Unit = {}
+    // Parent (ExerciseSessionScreen) will start guided for (PlanDay, LocalDate)
+    onStartDay: (PlanDay, LocalDate) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { ExercisePrefs(context) }
 
-    // PlanTasksStore is the single source of truth for today's plan & completion
+    // Single source of truth for per-day tasks & completion
     val tasksStore = remember { PlanTasksStore(context.applicationContext) }
 
-    // Tiny stores you already have (keep them if other screens rely on them)
+    // Your small legacy stores (kept to preserve behavior if other screens use them)
     val progressStore = remember { PlanProgressStore(context.applicationContext) }
     val activeStore = remember { ActiveDayProgressStore(context.applicationContext) }
 
-    // NEW: today (used by listeners and "done" check)
-    val today = remember { LocalDate.now() }
-
-    // NEW: bump this version to trigger recomposition whenever PlanTasksStore changes.
-    // We don't need the task list itself here; the version is enough to re-read in lambdas.
+    // Drive recomposition when PlanTasksStore changes (we don't hold lists here)
     var planTasksVersion by remember { mutableStateOf(0) }
-
-    // NEW: listen to PlanTasksStore changes so Plan screen reacts to toggles done in Workout page.
-    DisposableEffect(today) {
+    DisposableEffect(Unit) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-            // Any setTasks() will trigger this; just bump a version to refresh dependent reads.
             planTasksVersion++
         }
         tasksStore.addOnChangeListener(listener)
         onDispose { tasksStore.removeOnChangeListener(listener) }
     }
 
-    // Load persisted profile or a default
+    // Load/save profile
     val persisted = prefs.loadProfileOrNull()
-    var profile by rememberSaveable(stateSaver = ProfileSaver) { mutableStateOf(persisted ?: UserProfile()) }
+    var profile by rememberSaveable(stateSaver = ProfileSaver) {
+        mutableStateOf(persisted ?: UserProfile())
+    }
     var isSaved by rememberSaveable { mutableStateOf(persisted != null) }
 
-    // BottomSheet state for Day Plan detail
+    // Bottom sheet state (Day details)
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(initialValue = Hidden, skipHalfExpanded = true)
     var sheetDay by remember { mutableStateOf<PlanDay?>(null) }
-
-    // Helpers to sync completion into PlanTasksStore for TODAY
-    val markAllTodayCompleted: (Boolean) -> Unit = remember {
-        { completed ->
-            val current = tasksStore.getTasks(today)
-            if (current.isNotEmpty()) {
-                val updated = current.map { it.copy(completed = completed) }
-                tasksStore.setTasks(today, tasksStore.getDayTitle(today), updated)
-            }
-        }
-    }
+    var sheetDate by remember { mutableStateOf<LocalDate?>(null) } // which calendar date we mutate
 
     ModalBottomSheetLayout(
         sheetState = sheetState,
@@ -101,25 +85,45 @@ fun ExercisePlanScreen(
         sheetContent = {
             DayPlanSheet(
                 day = sheetDay,
-                // Keep your legacy "done" check to display hints
-                isDoneToday = sheetDay?.let { progressStore.isDone(LocalDate.now(), it.title) } ?: false,
+                date = sheetDate ?: LocalDate.now(),
+                // Keep your legacy flag only for hint label (doesn't control real completion)
+                isDoneToday = sheetDay?.let { progressStore.isDone(sheetDate ?: LocalDate.now(), it.title) } ?: false,
                 onStart = { day ->
-                    // If user chooses "Redo", clear today's completed flags and the legacy flags
-                    if (progressStore.isDone(LocalDate.now(), day.title)) {
-                        progressStore.clear(LocalDate.now(), day.title)
-                        activeStore.clear(LocalDate.now(), day.title)
-                    }
-                    // Also clear PlanTasksStore's completed flags so progress on Workout restarts
-                    markAllTodayCompleted(false)
+                    val d = sheetDate ?: LocalDate.now()
 
-                    onStartDay(day)
+                    // Reset legacy flags only for that DAY (redo scenario)
+                    progressStore.clear(d, day.title)
+                    activeStore.clear(d, day.title)
+
+                    // Also clear PlanTasksStore completion only for that DAY
+                    val current = tasksStore.getTasks(d)
+                    if (current.isNotEmpty()) {
+                        tasksStore.setTasks(
+                            date = d,
+                            dayTitle = tasksStore.getDayTitle(d),
+                            tasks = current.map { it.copy(completed = false) }
+                        )
+                    }
+
+                    // Bubble up to start guided for that (day, date)
+                    onStartDay(day, d)
                     scope.launch { sheetState.hide() }
                 },
                 onQuickDone = { day ->
-                    // 1) Keep your existing “done today” flag
-                    progressStore.markDone(LocalDate.now(), day.title)
-                    // 2) Persist completion into PlanTasksStore — this drives Workout progress
-                    markAllTodayCompleted(true)
+                    val d = sheetDate ?: LocalDate.now()
+
+                    // Legacy: mark done for that DAY
+                    progressStore.markDone(d, day.title)
+
+                    // Real source: set all completed for that DAY
+                    val current = tasksStore.getTasks(d)
+                    if (current.isNotEmpty()) {
+                        tasksStore.setTasks(
+                            date = d,
+                            dayTitle = tasksStore.getDayTitle(d),
+                            tasks = current.map { it.copy(completed = true) }
+                        )
+                    }
 
                     Toast.makeText(context, "Marked done: ${day.title}", Toast.LENGTH_SHORT).show()
                     scope.launch { sheetState.hide() }
@@ -127,40 +131,31 @@ fun ExercisePlanScreen(
             )
         }
     ) {
-        // NEW — only mark the *today* card as Done based on today's tasks;
-// other days are not affected by today's completion.
         if (isSaved) {
-            // 3-letter uppercase prefix of *today* (e.g., "FRI"). We use it to identify the card of today.
-            val today3 = remember { today.dayOfWeek.name.take(3).uppercase() }
-
-            // Re-read today's tasks whenever PlanTasksStore version changes
-            // so UI reflects toggles coming from the Workout page as well.
-            val allTasksToday = remember(planTasksVersion, today) { tasksStore.getTasks(today) }
-
-            // Only consider "all completed" for today's card; an empty list means not done.
-            val allCompletedToday = allTasksToday.isNotEmpty() && allTasksToday.all { it.completed }
+            val plan = remember(profile) { generateWeeklyPlan(profile, computeSchedule(profile)) }
 
             PlanOverview(
                 profile = profile,
-                onReCustomise = { isSaved = false }, // back to wizard with current answers
-                onReset = {                           // clear storage and go to wizard
+                onReCustomise = { isSaved = false },
+                onReset = {
                     prefs.clear()
                     profile = UserProfile()
                     isSaved = false
                 },
-                // When a day card is clicked, open the bottom sheet
                 onDayClick = { day ->
                     sheetDay = day
+                    sheetDate = resolveDateFromPlanTitle(day.title)
                     scope.launch { sheetState.show() }
                 },
-                // Only the card that represents *today* can be marked Done by today's task completion.
-                // We also keep your legacy progressStore flag (Quick done etc.) as a fallback for today.
+                // Badge logic must be per-day, using PlanTasksStore only
                 isDoneToday = { day ->
-                    val isTodayCard = day.title.startsWith(today3)
-                    if (!isTodayCard) return@PlanOverview false
-                    val planned = allTasksToday.filter { it.type != "synthetic" }
+                    val d = resolveDateFromPlanTitle(day.title)
+                    val tasks = tasksStore.getTasks(d)
+                    val planned = tasks.filter { it.type != "synthetic" }
                     planned.isNotEmpty() && planned.all { it.completed }
-                }
+                },
+                plan = plan,
+                planTasksVersion = planTasksVersion
             )
         } else {
             PlannerWizard(
@@ -168,9 +163,8 @@ fun ExercisePlanScreen(
                 onSave = { p -> prefs.saveProfile(p); profile = p; isSaved = true }
             )
         }
-
     }
-    }
+}
 
 /* ------------------------------ DATA MODEL ------------------------------- */
 
@@ -185,7 +179,7 @@ data class UserProfile(
     val goal: Goal = Goal.LoseWeight,
     val experience: Experience = Experience.Beginner,
     val equipment: Equipment = Equipment.None,
-    val daysPerWeek: Int = 3, // 1..7 supported
+    val daysPerWeek: Int = 3,
     val sessionLength: SessionLength = SessionLength.Standard30,
     val preferIndoor: Boolean = true,
     val hasInjury: Boolean = false,
@@ -194,7 +188,7 @@ data class UserProfile(
     val heightCm: Int? = null,
     val weightKg: Float? = null,
     val targetWeightKg: Float? = null,
-    val availableDays: Set<DayOfWeek> = emptySet() // if empty, we auto-distribute
+    val availableDays: Set<DayOfWeek> = emptySet()
 )
 
 /* ------------------------------ PREFERENCES ------------------------------ */
@@ -256,7 +250,9 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
     var draft by rememberSaveable(stateSaver = ProfileSaver) { mutableStateOf(initial) }
     val totalSteps = 11 // 0..10
 
-    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+    Column(
+        Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())
+    ) {
         Text("Tell us about you", style = MaterialTheme.typography.h6)
         Spacer(Modifier.height(8.dp))
         LinearProgressIndicator(progress = (step + 1) / totalSteps.toFloat(), modifier = Modifier.fillMaxWidth())
@@ -296,7 +292,7 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
 }
 
 /* ----------------------------- WIZARD STEPS ------------------------------ */
-// (unchanged UI helpers below…)
+
 @Composable private fun GoalStep(selected: Goal, onSelect: (Goal) -> Unit) {
     StepCard("Your primary goal") {
         ChoiceRadio("Lose weight", selected == Goal.LoseWeight) { onSelect(Goal.LoseWeight) }
@@ -402,7 +398,6 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
             DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
             DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY
         )
-
         Column {
             all.chunked(4).forEach { row ->
                 Row {
@@ -434,7 +429,7 @@ private fun PlannerWizard(initial: UserProfile, onSave: (UserProfile) -> Unit) {
     }
 }
 
-/* ----------------------------- SAVED VIEW (PRETTY) ----------------------- */
+/* ----------------------------- SAVED VIEW ------------------------------- */
 
 @Composable
 private fun PlanOverview(
@@ -442,16 +437,20 @@ private fun PlanOverview(
     onReCustomise: () -> Unit,
     onReset: () -> Unit,
     onDayClick: (PlanDay) -> Unit,
-    // NEW: injected checker for “done today”
-    isDoneToday: (PlanDay) -> Boolean
+    isDoneToday: (PlanDay) -> Boolean,
+    plan: ExercisePlan,
+    planTasksVersion: Int
 ) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
 
-        // Header with "Re-customize"
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        // Header
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text("Your plan", style = MaterialTheme.typography.h6)
 
-            // Confirmation dialog
             var showConfirmDialog by remember { mutableStateOf(false) }
             Row {
                 TextButton(onClick = { showConfirmDialog = true }) {
@@ -477,13 +476,17 @@ private fun PlanOverview(
         }
 
         Spacer(Modifier.height(12.dp))
-        // Profile summary card with chips
+
+        // Profile card
         Card(elevation = 3.dp, shape = RoundedCornerShape(16.dp)) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     GoalBadge(profile.goal)
                     Spacer(Modifier.width(12.dp))
-                    Text(titleForGoal(profile.goal), style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
+                    Text(
+                        titleForGoal(profile.goal),
+                        style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
+                    )
                 }
                 Spacer(Modifier.height(10.dp))
                 FlowChips(
@@ -515,41 +518,26 @@ private fun PlanOverview(
         SectionTitle(icon = Icons.Default.Today, title = "Weekly plan")
         Spacer(Modifier.height(8.dp))
 
-        // Generate and render weekly plan (cards are clickable)
-        val plan = remember(profile) { generateWeeklyPlan(profile, computeSchedule(profile)) }
+        // Seed today's planned (non-synthetic) tasks only if not already present
         val ctx = LocalContext.current
-
-        // Persist TODAY's tasks for Workout to read – KEEP synthetic tasks
-        // CHANGED: seed only when there is NO existing planned (non-synthetic) task today.
-        LaunchedEffect(plan) {
-            val today = LocalDate.now()
+        LaunchedEffect(planTasksVersion, plan) {
             val store = PlanTasksStore(ctx.applicationContext)
-
+            val today = LocalDate.now()
             val existing = store.getTasks(today)
             val hasPlanned = existing.any { it.type != "synthetic" }
-
             if (!hasPlanned) {
                 val today3 = today.dayOfWeek.name.take(3).uppercase()
                 val todayDay = plan.days.firstOrNull { it.title.startsWith(today3) }
-
                 val tasks = todayDay?.items?.mapIndexed { idx, item ->
-                    PlanTasksStore.PlanTask(
-                        taskId = "d${today}-$idx", // stable within the day
-                        title = item
-                    )
+                    PlanTasksStore.PlanTask(taskId = "d${today}-$idx", title = item)
                 } ?: emptyList()
-
-                store.setTasksKeepingSynthetic(
-                    date = today,
-                    dayTitle = todayDay?.title,
-                    newTasks = tasks
-                )
+                store.setTasksKeepingSynthetic(today, todayDay?.title, tasks)
             }
         }
 
         WeeklyPlanPretty(
             plan = plan,
-            isDoneToday = isDoneToday, // NEW
+            isDoneToday = isDoneToday,
             onDayClick = onDayClick
         )
 
@@ -561,7 +549,7 @@ private fun PlanOverview(
 }
 
 /* ---------- Pretty components ---------- */
-// (UI-only helpers unchanged…)
+
 @Composable private fun SectionTitle(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colors.primary)
@@ -660,11 +648,10 @@ private fun PlanOverview(
 }
 
 /* ----------------------------- PLAN GENERATION --------------------------- */
-// (unchanged generation helpers…)
+
 data class PlanDay(val title: String, val items: List<String>)
 data class ExercisePlan(val days: List<PlanDay>)
 
-/** Compute which days of week to schedule for, honoring availability and daysPerWeek (1..7). */
 private fun computeSchedule(p: UserProfile): List<DayOfWeek> {
     val all = listOf(
         DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
@@ -682,7 +669,7 @@ private fun computeSchedule(p: UserProfile): List<DayOfWeek> {
             4 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.SATURDAY)
             5 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SUNDAY)
             6 -> listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY)
-            else -> all // 7
+            else -> all
         }
     }
     val result = mutableListOf<DayOfWeek>()
@@ -784,8 +771,6 @@ private fun labelForGoal(g: Goal) = when (g) {
 @Composable private fun LabeledField(label: String, value: String, onChange: (String) -> Unit) {
     Column { Text(label, style = MaterialTheme.typography.caption); OutlinedTextField(value, onValueChange = onChange, singleLine = true, modifier = Modifier.fillMaxWidth()) }
 }
-
-/** Saver for UserProfile (receiver is SaverScope, matches Compose API). */
 private val ProfileSaver = listSaver<UserProfile, String>(
     save = { p ->
         listOf(
@@ -816,8 +801,6 @@ private val ProfileSaver = listSaver<UserProfile, String>(
         )
     }
 )
-
-/* --------- Titles --------- */
 private fun titleForGoal(goal: Goal) = when (goal) {
     Goal.LoseWeight -> "Fat-loss program"
     Goal.GainMuscle -> "Muscle program"
@@ -825,20 +808,19 @@ private fun titleForGoal(goal: Goal) = when (goal) {
     Goal.ImproveEndurance -> "Endurance program"
 }
 
-/* --------------------------- BottomSheet content ------------------------- */
+/* --------------------------- Day bottom sheet ---------------------------- */
 
-// === Replace the whole DayPlanSheet with this version (kept your structure) ===
-// ADDED: per-item toggle with confirm dialog; synthetic list with delete.
 @Composable
 private fun DayPlanSheet(
     day: PlanDay?,
+    date: LocalDate,
     isDoneToday: Boolean,
     onStart: (PlanDay) -> Unit,
     onQuickDone: (PlanDay) -> Unit
 ) {
     val ctx = LocalContext.current.applicationContext
     val store = remember { PlanTasksStore(ctx) }
-    val today = remember { LocalDate.now() }
+    val currentDate = date
 
     if (day == null) {
         Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -847,52 +829,40 @@ private fun DayPlanSheet(
         return
     }
 
-    // Local mirror of today's tasks + listener so Plan <-> Workout stay in sync.
-    var tasks by remember { mutableStateOf(store.getTasks(today)) }
-    DisposableEffect(today) {
+    // Local mirror of the selected date's tasks
+    var tasks by remember { mutableStateOf(store.getTasks(currentDate)) }
+    DisposableEffect(currentDate) {
         val l = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-            tasks = store.getTasks(today)
+            tasks = store.getTasks(currentDate)
         }
         store.addOnChangeListener(l)
         onDispose { store.removeOnChangeListener(l) }
     }
 
-    /** Ensure today's template exists (and keep synthetic quick-add tasks). */
-    fun ensureTodayTemplate() {
-        val current = store.getTasks(today)
+    // Create template tasks for this date if none exist (keep synthetic)
+    fun ensureTemplateFor(target: LocalDate) {
+        val current = store.getTasks(target)
         if (current.isEmpty()) {
             val template = day.items.mapIndexed { idx, item ->
-                PlanTasksStore.PlanTask(
-                    taskId = "d${today}-$idx",
-                    title = item
-                )
+                PlanTasksStore.PlanTask(taskId = "d$target-$idx", title = item)
             }
-            store.setTasksKeepingSynthetic(
-                date = today,
-                dayTitle = day.title,
-                newTasks = template
-            )
-            tasks = store.getTasks(today)
+            store.setTasksKeepingSynthetic(date = target, dayTitle = day.title, newTasks = template)
+            tasks = store.getTasks(target)
         }
     }
 
-    /** Mark all today's items as completed / not completed. */
-    fun setAllCompleted(value: Boolean) {
-        val list = store.getTasks(today)
+    // Mark all tasks for the date as completed / not completed
+    fun setAllCompletedFor(target: LocalDate, value: Boolean) {
+        val list = store.getTasks(target)
         if (list.isNotEmpty()) {
             store.setTasks(
-                date = today,
-                dayTitle = store.getDayTitle(today),
+                date = target,
+                dayTitle = store.getDayTitle(target),
                 tasks = list.map { it.copy(completed = value) }
             )
-            tasks = store.getTasks(today)
+            tasks = store.getTasks(target)
         }
     }
-
-    // Confirm dialog states for per-item toggle & delete
-    var pendingToggle by remember { mutableStateOf<PlanTasksStore.PlanTask?>(null) }
-    var toggleToCompleted by remember { mutableStateOf(true) }
-    var pendingDelete by remember { mutableStateOf<PlanTasksStore.PlanTask?>(null) }
 
     Column(
         Modifier.fillMaxWidth().padding(16.dp),
@@ -904,60 +874,44 @@ private fun DayPlanSheet(
             Text(day.title, style = MaterialTheme.typography.h6)
         }
 
-        // ---------- Per-item operations (planned / non-synthetic) ----------
-        ensureTodayTemplate()
+        // Planned items (non-synthetic)
+        ensureTemplateFor(currentDate)
         tasks.filter { it.type != "synthetic" }.forEach { t ->
             Card(elevation = 0.dp, backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.03f)) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(t.title, style = MaterialTheme.typography.subtitle2)
-                        t.target?.let { Text("$it min", style = MaterialTheme.typography.caption, color = Color.Gray) }
-                    }
+                    Column(Modifier.weight(1f)) { Text(t.title, style = MaterialTheme.typography.subtitle2) }
                     if (!t.completed) {
-                        OutlinedButton(onClick = { pendingToggle = t; toggleToCompleted = true }) { Text("Mark done") }
+                        OutlinedButton(onClick = {
+                            val newList = store.getTasks(currentDate).map {
+                                if (it.taskId == t.taskId) it.copy(completed = true) else it
+                            }
+                            store.setTasks(currentDate, store.getDayTitle(currentDate), newList)
+                        }) { Text("Mark done") }
                     } else {
-                        OutlinedButton(onClick = { pendingToggle = t; toggleToCompleted = false }) { Text("Unmark") }
+                        OutlinedButton(onClick = {
+                            val newList = store.getTasks(currentDate).map {
+                                if (it.taskId == t.taskId) it.copy(completed = false) else it
+                            }
+                            store.setTasks(currentDate, store.getDayTitle(currentDate), newList)
+                        }) { Text("Unmark") }
                     }
                 }
             }
         }
 
-        // ---- Live completion summary based on today's PlanTasksStore ----
-// We compute "day is done" only from PLANNED (non-synthetic) items,
-// so the result matches the green "Done" chip logic in Plan page.
         val planned = tasks.filter { it.type != "synthetic" }
-        val plannedTotal = planned.size
-        val plannedDone = planned.count { it.completed }
-        val allCompletedNow = plannedTotal > 0 && plannedDone == plannedTotal
+        val allCompletedNow = planned.isNotEmpty() && planned.all { it.completed }
 
-// For quick-complete button copy, we still show progress over ALL items
-// (planned + synthetic) to be more informative.
-        val total = tasks.size
-        val doneCount = tasks.count { it.completed }
-        val anyDone = doneCount > 0
-        val remaining = (total - doneCount).coerceAtLeast(0)
-
-        if (allCompletedNow) {
-            Text(
-                "Completed today — tap Redo to start a new run.",
-                style = MaterialTheme.typography.body2,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
-            )
-        }
-
-        // ---- Actions row: left = Start/Redo, right = quick complete with live label ----
+        // Actions: Start/Redo & Quick-complete
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-
-            // Left button: if today is considered done, show "Redo guided".
             Button(
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    ensureTodayTemplate()
-                    // Start a fresh guided run → clear today's checkmarks first
-                    setAllCompleted(false)
+                    ensureTemplateFor(currentDate)
+                    setAllCompletedFor(currentDate, false) // redo = clear today's checks FOR THIS DAY ONLY
                     onStart(day)
                 }
             ) {
@@ -966,33 +920,22 @@ private fun DayPlanSheet(
                 Text(if (allCompletedNow) "Redo guided" else "Start guided")
             }
 
-            // Right button (quick complete) – dynamic label & enabled state:
-            // - all done            → disabled, "Already done today"
-            // - some done           → enabled,  "Mark all done (N left)"
-            // - none/empty          → enabled,  "Mark done quickly"
-            val quickText = when {
-                allCompletedNow -> "Already done today"
-                anyDone         -> "Mark all done ($remaining left)"
-                else            -> "Mark done quickly"
-            }
-
             OutlinedButton(
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    ensureTodayTemplate()
-                    setAllCompleted(true)
-                    onQuickDone(day) // keep your legacy flow; also sets your previous "done" flag
+                    ensureTemplateFor(currentDate)
+                    setAllCompletedFor(currentDate, true) // quick complete FOR THIS DAY ONLY
+                    onQuickDone(day)
                 },
                 enabled = !allCompletedNow
             ) {
                 Icon(Icons.Default.Check, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text(quickText)
+                Text(if (allCompletedNow) "Already done" else "Mark all done")
             }
         }
 
-
-        // ---------- Synthetic (recommended) with delete ----------
+        // Recommended (synthetic) items (optional)
         val synthetic = tasks.filter { it.type == "synthetic" }
         if (synthetic.isNotEmpty()) {
             Text("Recommended today", style = MaterialTheme.typography.subtitle2)
@@ -1004,52 +947,29 @@ private fun DayPlanSheet(
                     ) {
                         Column(Modifier.weight(1f)) { Text(t.title, style = MaterialTheme.typography.subtitle2) }
                         if (!t.completed) {
-                            OutlinedButton(onClick = { pendingToggle = t; toggleToCompleted = true }) { Text("Mark done") }
+                            OutlinedButton(onClick = {
+                                val newList = store.getTasks(currentDate).map {
+                                    if (it.taskId == t.taskId) it.copy(completed = true) else it
+                                }
+                                store.setTasks(currentDate, store.getDayTitle(currentDate), newList)
+                            }) { Text("Mark done") }
                         } else {
-                            OutlinedButton(onClick = { pendingToggle = t; toggleToCompleted = false }) { Text("Unmark") }
+                            OutlinedButton(onClick = {
+                                val newList = store.getTasks(currentDate).map {
+                                    if (it.taskId == t.taskId) it.copy(completed = false) else it
+                                }
+                                store.setTasks(currentDate, store.getDayTitle(currentDate), newList)
+                            }) { Text("Unmark") }
                         }
                         Spacer(Modifier.width(6.dp))
-                        IconButton(onClick = { pendingDelete = t }) { Icon(Icons.Default.Delete, contentDescription = "Remove") }
+                        IconButton(onClick = {
+                            val newList = store.getTasks(currentDate).filterNot { it.taskId == t.taskId && t.type == "synthetic" }
+                            store.setTasks(currentDate, store.getDayTitle(currentDate), newList)
+                        }) { Icon(Icons.Default.Delete, contentDescription = "Remove") }
                     }
                 }
             }
         }
-    }
-
-    // ---------- Confirm dialogs ----------
-    pendingToggle?.let { t ->
-        val willComplete = toggleToCompleted
-        AlertDialog(
-            onDismissRequest = { pendingToggle = null },
-            title = { Text(if (willComplete) "Mark as completed?" else "Mark as not completed?") },
-            text  = { Text("Item: \"${t.title}\"") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val listNow = store.getTasks(today)
-                    val newList = listNow.map { if (it.taskId == t.taskId) it.copy(completed = willComplete) else it }
-                    store.setTasks(date = today, dayTitle = store.getDayTitle(today), tasks = newList)
-                    pendingToggle = null
-                }) { Text("Confirm") }
-            },
-            dismissButton = { TextButton(onClick = { pendingToggle = null }) { Text("Cancel") } }
-        )
-    }
-
-    pendingDelete?.let { t ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("Remove recommended task?") },
-            text  = { Text("This will remove \"${t.title}\" from today's plan.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val listNow = store.getTasks(today)
-                    val newList = listNow.filterNot { it.taskId == t.taskId && t.type == "synthetic" }
-                    store.setTasks(date = today, dayTitle = store.getDayTitle(today), tasks = newList)
-                    pendingDelete = null
-                }) { Text("Remove") }
-            },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } }
-        )
     }
 }
 
@@ -1068,4 +988,19 @@ private fun DoneChip() {
             Text("Done", style = MaterialTheme.typography.caption)
         }
     }
+}
+
+/* ------------------------------ Date helper ------------------------------ */
+// Turn a plan card title like "MON – muscle focus" into a LocalDate of the current week.
+fun resolveDateFromPlanTitle(title: String): LocalDate {
+    val map = mapOf(
+        "MON" to DayOfWeek.MONDAY, "TUE" to DayOfWeek.TUESDAY, "WED" to DayOfWeek.WEDNESDAY,
+        "THU" to DayOfWeek.THURSDAY, "FRI" to DayOfWeek.FRIDAY,
+        "SAT" to DayOfWeek.SATURDAY, "SUN" to DayOfWeek.SUNDAY
+    )
+    val prefix = title.take(3).uppercase()
+    val targetDow = map[prefix] ?: return LocalDate.now()
+    val today = LocalDate.now()
+    val weekStart = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    return (0..6).map { weekStart.plusDays(it.toLong()) }.firstOrNull { it.dayOfWeek == targetDow } ?: today
 }

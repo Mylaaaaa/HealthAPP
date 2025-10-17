@@ -77,6 +77,8 @@ fun WelcomeScreen(
     ui: HomeUiState,
     userName: String = "User"
 ) {
+    val colors = MaterialTheme.colors
+
     val steps = ui.steps
     val sleepHours = ui.sleepHours
     val bodyWeightKg = ui.bodyWeightKg
@@ -100,6 +102,7 @@ fun WelcomeScreen(
     Column(
         Modifier
             .fillMaxSize()
+            .background(colors.background)
             .verticalScroll(rememberScrollState())
     ) {
 
@@ -108,7 +111,12 @@ fun WelcomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.verticalGradient(listOf(Color(0xFF4C6FFF), Color(0xFF7C9BFF)))
+                    Brush.verticalGradient(
+                        if (colors.isLight)
+                            listOf(colors.primary, colors.primary.copy(alpha = 0.70f))
+                        else
+                            listOf(colors.primary.copy(alpha = 0.85f), colors.background)
+                    )
                 )
                 .padding(horizontal = 16.dp, vertical = 18.dp)
         ) {
@@ -365,15 +373,17 @@ fun WelcomeScreen(
 
 @Composable
 private fun CapsuleChip(text: String) {
-    Card(backgroundColor = Color.White.copy(alpha = 0.18f), elevation = 0.dp) {
+    val c = MaterialTheme.colors
+    Card(backgroundColor = c.onPrimary.copy(alpha = 0.18f), elevation = 0.dp) {
         Text(
             text,
-            color = Color.White,
+            color = c.onPrimary,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
             fontSize = 12.sp
         )
     }
 }
+
 
 @Composable
 private fun CtaButton(
@@ -408,7 +418,7 @@ private fun CtaButton(
 private fun StatPill(icon: ImageVector, value: String, label: String, tint: Color) {
     Card(
         elevation = 2.dp,
-        backgroundColor = Color.White,
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
             .height(64.dp)
             .widthIn(min = 140.dp)
@@ -422,8 +432,8 @@ private fun StatPill(icon: ImageVector, value: String, label: String, tint: Colo
             Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(10.dp))
             Column {
-                Text(value, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Text(label, color = Color.Gray, fontSize = 12.sp)
+                Text(value, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = MaterialTheme.colors.onSurface)
+                Text(label, color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f), fontSize = 12.sp)
             }
         }
     }
@@ -461,7 +471,7 @@ private fun FeatureCard(
     Card(
         elevation = 4.dp,
         shape = RoundedCornerShape(18.dp),
-        backgroundColor = Color.White,
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
             .height(108.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
@@ -493,7 +503,7 @@ private fun FeatureCard(
             // Title: auto-fit single-word to one line
             Text(
                 text = title,
-                color = Color(0xFF202124),
+                color = MaterialTheme.colors.onSurface,
                 textAlign = TextAlign.Center,
                 lineHeight = 15.sp,
                 // For single word: 1 line + Clip (no ellipsis) + auto downsize
@@ -543,7 +553,7 @@ private fun TrendMiniCard(
 ) {
     Card(
         elevation = 4.dp,
-        backgroundColor = Color.White,
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = modifier
             .height(96.dp)
             .clickable { onClick() }
@@ -555,7 +565,11 @@ private fun TrendMiniCard(
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text(wowText.first, color = wowText.second, fontSize = 12.sp)
+                val wowColor = if (wowText.first.isEmpty())
+                    MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
+                else
+                    wowText.second
+                Text(wowText.first, color = wowColor, fontSize = 12.sp)
             }
             Spacer(Modifier.height(6.dp))
             Sparkline(
@@ -571,7 +585,7 @@ private fun TrendMiniCard(
                 Text(
                     "${trimNumber(end)} $unit",
                     fontSize = 12.sp,
-                    color = Color.DarkGray,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -623,7 +637,7 @@ private fun ReminderCard(
 ) {
     Card(
         elevation = 4.dp,
-        backgroundColor = Color(0xFFF6F8FF),
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth()
@@ -632,7 +646,7 @@ private fun ReminderCard(
             Text(text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CtaButton(primaryText, Icons.Filled.Dashboard, Color(0xFF4C6FFF), onPrimary)
+                CtaButton(primaryText, Icons.Filled.Dashboard, MaterialTheme.colors.primary, onPrimary)
                 CtaButton(secondaryText, Icons.Filled.Accessibility, Color(0xFF00B894), onSecondary)
             }
         }
@@ -649,9 +663,10 @@ private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
             .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // ---- Left card: streak ----
         Card(
             elevation = 3.dp,
-            backgroundColor = Color.White,
+            backgroundColor = MaterialTheme.colors.surface, // follow theme
             modifier = Modifier
                 .weight(1f)
                 .height(70.dp)
@@ -666,13 +681,19 @@ private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text("Streak", fontWeight = FontWeight.SemiBold)
-                    Text("$streakDays days", color = Color.Gray, fontSize = 12.sp)
+                    Text(
+                        "$streakDays days",
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                        fontSize = 12.sp
+                    )
                 }
             }
         }
+
+        // ---- Right card: badge ----
         Card(
             elevation = 3.dp,
-            backgroundColor = Color.White,
+            backgroundColor = MaterialTheme.colors.surface, // ✅ follow theme
             modifier = Modifier
                 .weight(1f)
                 .height(70.dp)
@@ -693,7 +714,7 @@ private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
                     Text("Badge", fontWeight = FontWeight.SemiBold)
                     Text(
                         if (showBadgeUnlocked) "New badge unlocked!" else "Keep going to unlock",
-                        color = Color.Gray,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f), // ✅ changed
                         fontSize = 12.sp
                     )
                 }
@@ -717,7 +738,7 @@ private fun GoalRingCard(
 ) {
     Card(
         elevation = 3.dp,
-        backgroundColor = Color.White,
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = modifier.height(112.dp)
     ) {
         Column(
@@ -728,10 +749,15 @@ private fun GoalRingCard(
         ) {
             RingProgress(progress = ratio, size = 46.dp, strokeWidth = 6.dp, tint = tint)
             Spacer(Modifier.height(6.dp))
-            Text(label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(
+                label,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                color = MaterialTheme.colors.onSurface
+            )
             Text(
                 valueLabel,
-                color = Color.Gray,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -739,6 +765,7 @@ private fun GoalRingCard(
         }
     }
 }
+
 
 @Composable
 private fun RingProgress(progress: Float, size: Dp, strokeWidth: Dp, tint: Color) {
@@ -764,10 +791,14 @@ private fun RingProgress(progress: Float, size: Dp, strokeWidth: Dp, tint: Color
 /* -------------------- Health tip -------------------- */
 
 @Composable
-private fun HealthTipCard(tip: String, actionText: String, onClick: () -> Unit) {
+private fun HealthTipCard(
+    tip: String,
+    actionText: String,
+    onClick: () -> Unit
+) {
     Card(
         elevation = 3.dp,
-        backgroundColor = Color.White,
+        backgroundColor = MaterialTheme.colors.surface, // ✅ Use theme-based surface color for light/dark mode
         modifier = Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth()
@@ -780,10 +811,23 @@ private fun HealthTipCard(tip: String, actionText: String, onClick: () -> Unit) 
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Daily tip", fontWeight = FontWeight.SemiBold)
-                Text(tip, color = Color.Gray, fontSize = 12.sp)
+                // Main title for the tip section
+                Text(
+                    "Daily tip",
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colors.onSurface // ✅ Adapt text color to theme
+                )
+                // The actual health tip text (slightly dimmed)
+                Text(
+                    tip,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f), // ✅ Dimmed for readability
+                    fontSize = 12.sp
+                )
             }
+
             Spacer(Modifier.width(8.dp))
+
+            // Action text ("Learn more") – keep blue for consistent accent
             Text(
                 actionText,
                 color = Color(0xFF4C6FFF),
@@ -792,6 +836,8 @@ private fun HealthTipCard(tip: String, actionText: String, onClick: () -> Unit) 
             )
         }
     }
+
+    // Spacing below the card
     Spacer(Modifier.height(8.dp))
 }
 
@@ -805,29 +851,35 @@ private fun RecentActivitySection(
     onViewAll: () -> Unit,
     onItemClick: (ImageVector) -> Unit
 ) {
+    val colors = MaterialTheme.colors
+
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Section title follows theme text color
         Text(
             "Recent",
             style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.onSurface,
             modifier = Modifier.weight(1f)
         )
+        // Link color uses primary so it pops in both light/dark
         Text(
             "View all",
-            color = Color(0xFF4C6FFF),
+            color = colors.primary, // was Color(0xFF4C6FFF)
             fontWeight = FontWeight.Medium,
             modifier = Modifier.clickable { onViewAll() }
         )
     }
+
     Column(Modifier.padding(horizontal = 16.dp)) {
         items.take(3).forEach { item ->
             Card(
                 elevation = 2.dp,
-                backgroundColor = Color.White,
+                backgroundColor = colors.surface, // was Color.White
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
@@ -840,17 +892,30 @@ private fun RecentActivitySection(
                         .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(item.icon, null, tint = Color(0xFF4C6FFF))
+                    // Use primary for icon tint to keep brand accent
+                    Icon(item.icon, null, tint = colors.primary) // was fixed blue
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(item.time, color = Color.Gray, fontSize = 12.sp)
+                        // Title uses onSurface for proper contrast
+                        Text(
+                            item.title,
+                            color = colors.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        // Secondary text uses a dimmed onSurface to de-emphasize
+                        Text(
+                            item.time,
+                            color = colors.onSurface.copy(alpha = 0.6f), // was Color.Gray
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }
         }
     }
 }
+
 
 /* -------------------- Permission banner -------------------- */
 
@@ -863,7 +928,7 @@ private fun PermissionBanner(
 ) {
     Card(
         elevation = 2.dp,
-        backgroundColor = Color(0xFFFFF3E0),
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .fillMaxWidth()
@@ -876,11 +941,11 @@ private fun PermissionBanner(
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, null, tint = Color(0xFFF57C00))
+            Icon(icon, null, tint = MaterialTheme.colors.primary)
             Spacer(Modifier.width(10.dp))
-            Text(text = text, modifier = Modifier.weight(1f), fontSize = 13.sp)
+            Text(text = text, modifier = Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colors.onSurface)
             Spacer(Modifier.width(8.dp))
-            Text(actionText, color = Color(0xFFF57C00), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(actionText, color = MaterialTheme.colors.primary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.example.myhealth.presentation.loginregister
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,6 +31,8 @@ fun LoginScreenM3(
     onLogin: (email: String, password: String) -> Boolean,
     onNavigateRegister: () -> Unit
 ) {
+    val colors = MaterialTheme.colors
+
     var email by remember { mutableStateOf("") }
     var pwd by remember { mutableStateOf("") }
     var showPwd by remember { mutableStateOf(false) }
@@ -39,14 +42,18 @@ fun LoginScreenM3(
     val focus = LocalFocusManager.current
 
     Scaffold(
+        backgroundColor = MaterialTheme.colors.background,
+        // App bar uses theme primary; icons/text derive from contentColorFor(primary)
         topBar = {
             TopAppBar(
                 title = { Text("Sign in", fontWeight = FontWeight.SemiBold) },
-                backgroundColor = MaterialTheme.colors.primary,
-                contentColor = contentColorFor(MaterialTheme.colors.primary),
+                backgroundColor = colors.primary,
+                contentColor = contentColorFor(colors.primary),
                 elevation = 0.dp
             )
-        }
+        },
+
+        modifier = Modifier.background(colors.background)
     ) { padding ->
         Column(
             Modifier
@@ -56,21 +63,23 @@ fun LoginScreenM3(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Headline follows onSurface
             Text(
                 "Welcome back to MyHealth",
                 style = MaterialTheme.typography.subtitle1,
+                color = colors.onSurface,
                 textAlign = TextAlign.Center
             )
 
-            // Email
+            // ---------------- Email ----------------
             OutlinedTextField(
                 value = email,
                 onValueChange = { text ->
-                    // DO NOT trim/filter here so '.' is never blocked
+                    // Do not trim/filter while typing, to avoid blocking dots
                     email = text
                     error = null
                 },
-                label = { Text("Email") },
+                label = { Text("Email", color = colors.onSurface.copy(alpha = 0.7f)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(
@@ -80,14 +89,26 @@ fun LoginScreenM3(
                 keyboardActions = KeyboardActions(
                     onNext = { focus.clearFocus() }
                 ),
-                visualTransformation = VisualTransformation.None
+                visualTransformation = VisualTransformation.None,
+                // Make all field colors theme-aware for Light/Dark
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    textColor = colors.onSurface,
+                    cursorColor = colors.primary,
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.onSurface.copy(alpha = 0.4f),
+                    focusedLabelColor = colors.primary,
+                    unfocusedLabelColor = colors.onSurface.copy(alpha = 0.7f),
+                    placeholderColor = colors.onSurface.copy(alpha = 0.6f),
+                    leadingIconColor = colors.onSurface,
+                    trailingIconColor = colors.onSurface
+                )
             )
 
-            // Password
+            // ---------------- Password ----------------
             OutlinedTextField(
                 value = pwd,
                 onValueChange = { pwd = it; error = null },
-                label = { Text("Password") },
+                label = { Text("Password", color = colors.onSurface.copy(alpha = 0.7f)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (showPwd) VisualTransformation.None else PasswordVisualTransformation(),
@@ -95,20 +116,33 @@ fun LoginScreenM3(
                     IconButton(onClick = { showPwd = !showPwd }) {
                         Icon(
                             imageVector = if (showPwd) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = null
+                            contentDescription = null,
+                            tint = colors.onSurface
                         )
                     }
-                }
+                },
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    textColor = colors.onSurface,
+                    cursorColor = colors.primary,
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.onSurface.copy(alpha = 0.4f),
+                    focusedLabelColor = colors.primary,
+                    unfocusedLabelColor = colors.onSurface.copy(alpha = 0.7f),
+                    placeholderColor = colors.onSurface.copy(alpha = 0.6f),
+                    trailingIconColor = colors.onSurface
+                )
             )
 
+            // Error text uses theme error color
             if (error != null) {
                 Text(
                     error!!,
-                    color = MaterialTheme.colors.error,
+                    color = colors.error,
                     style = MaterialTheme.typography.body2
                 )
             }
 
+            // Buttons already pick proper colors from theme
             Button(
                 onClick = {
                     val ok = onLogin(email.trim(), pwd) // Only trim on submit
@@ -123,8 +157,9 @@ fun LoginScreenM3(
             Spacer(Modifier.height(8.dp))
 
             TextButton(onClick = onNavigateRegister) {
-                Text("Create an account")
+                Text("Create an account", color = colors.primary)
             }
         }
     }
 }
+

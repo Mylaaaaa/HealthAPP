@@ -1,3 +1,4 @@
+// file: app/src/main/java/com/example/myhealth/presentation/loginregister/RootApp.kt
 package com.example.myhealth.presentation.loginregister
 
 import androidx.compose.runtime.Composable
@@ -8,25 +9,30 @@ import com.example.myhealth.data.HealthConnectManager
 import com.example.myhealth.presentation.HealthConnectApp
 import com.example.myhealth.presentation.theme.ThemeViewModel
 
+/**
+ * Root gate:
+ * - If not logged in -> show AuthNavHost
+ * - If logged in -> show your original HealthConnectApp
+ *
+ * ThemeViewModel is passed down so the whole app sits under one theme wrapper in MainActivity.
+ */
 @Composable
 fun RootApp(
     healthConnectManager: HealthConnectManager,
-    themeViewModel: ThemeViewModel // <-- added
+    themeViewModel: ThemeViewModel
 ) {
-    // Observe login state so UI switches automatically
     val isAuthed by remember { FakeAuthStore.loggedIn }
     val hcManager by rememberUpdatedState(healthConnectManager)
 
     if (isAuthed) {
-        // Main app (with theme support)
+        //  pass themeViewModel into HealthConnectApp
         HealthConnectApp(
             healthConnectManager = hcManager,
-            themeViewModel = themeViewModel // <-- pass down
+            themeViewModel = themeViewModel
         )
     } else {
-        // Auth flow
-        AuthNavHost(onAuthenticated = {
-            FakeAuthStore.loggedIn.value = true
-        })
+        AuthNavHost(
+            onAuthenticated = { FakeAuthStore.loggedIn.value = true }
+        )
     }
 }

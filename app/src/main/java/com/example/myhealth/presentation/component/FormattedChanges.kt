@@ -44,7 +44,6 @@ import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
 import com.example.myhealth.R
 import com.example.myhealth.data.dateTimeWithOffsetOrDefault
-import com.example.myhealth.presentation.TAG
 import com.example.myhealth.presentation.theme.HealthConnectTheme
 import java.time.ZonedDateTime
 

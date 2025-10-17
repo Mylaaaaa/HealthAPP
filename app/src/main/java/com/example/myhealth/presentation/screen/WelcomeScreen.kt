@@ -373,11 +373,20 @@ fun WelcomeScreen(
 
 @Composable
 private fun CapsuleChip(text: String) {
-    val c = MaterialTheme.colors
-    Card(backgroundColor = c.onPrimary.copy(alpha = 0.18f), elevation = 0.dp) {
+    val colors = MaterialTheme.colors
+    val isDark = !colors.isLight
+
+    Card(
+        backgroundColor = if (isDark)
+            Color.White.copy(alpha = 0.12f) // darker background, subtle
+        else
+            colors.primary.copy(alpha = 0.12f),
+        elevation = 0.dp,
+        shape = RoundedCornerShape(50)
+    ) {
         Text(
             text,
-            color = c.onPrimary,
+            color = if (isDark) Color.White else colors.onPrimary,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
             fontSize = 12.sp
         )

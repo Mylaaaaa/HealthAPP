@@ -78,9 +78,9 @@ fun WelcomeScreen(
     val sleepHours = ui.sleepHours
     val bodyWeightKg = ui.bodyWeightKg
 
-    val weeklySteps = ui.weeklySteps
-    val weeklySleepHours = ui.weeklySleep
-    val weeklyWeight = ui.weeklyWeight
+    val weeklySteps = remember(ui.weeklySteps) { ui.weeklySteps.map { it.toFloat() } }
+    val weeklySleepHours = remember(ui.weeklySleep) { ui.weeklySleep.map { it.toFloat() } }
+    val weeklyWeight = remember(ui.weeklyWeight) { ui.weeklyWeight.map { it.toFloat() } }
 
     val stepGoal = ui.stepGoal
     val activeMinToday = ui.activeMinToday
@@ -230,7 +230,7 @@ fun WelcomeScreen(
         ) {
             TrendMiniCard(
                 title = "Steps",
-                values = weeklySteps.map { it.toFloat() },
+                values = weeklySteps,
                 unit = "",
                 wowText = wowLabel(
                     current = weeklySteps.lastOrNull()?.toFloat() ?: 0f,
@@ -242,7 +242,7 @@ fun WelcomeScreen(
             )
             TrendMiniCard(
                 title = "Sleep",
-                values = weeklySleepHours.map { it.toFloat() },
+                values = weeklySleepHours,
                 unit = "h",
                 wowText = wowLabel(
                     current = weeklySleepHours.lastOrNull()?.toFloat() ?: 0f,
@@ -254,7 +254,7 @@ fun WelcomeScreen(
             )
             TrendMiniCard(
                 title = "Weight",
-                values = weeklyWeight.map { it.toFloat() },
+                values = weeklyWeight,
                 unit = "kg",
                 wowText = wowLabel(
                     current = weeklyWeight.lastOrNull()?.toFloat() ?: 0f,
@@ -291,18 +291,21 @@ fun WelcomeScreen(
             style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
         )
 
+        // --- Feature grid ---
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             userScrollEnabled = false,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(gridHeight)
-                .semantics { contentDescription = "Feature grid"; },
+                .height(gridHeight),
             verticalArrangement = Arrangement.spacedBy(vSpacing.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
         ) {
-            items(entries.size) { index ->
+            items(
+                count = entries.size,
+                key = { index -> entries[index].title }
+            ) { index ->
                 val e = entries[index]
                 val tint = accentFor(index)
                 FeatureCard(

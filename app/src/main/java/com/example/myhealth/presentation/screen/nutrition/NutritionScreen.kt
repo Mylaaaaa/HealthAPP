@@ -1,11 +1,11 @@
 package com.example.myhealth.presentation.screen.nutrition
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.isSystemInDarkTheme
 import android.app.DatePickerDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme // kept but we won't use it for theme decision
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -33,6 +33,7 @@ import com.example.myhealth.presentation.screen.nutrition.db.ConditionEntity
 import com.example.myhealth.presentation.screen.nutrition.db.FoodEntity
 import java.time.LocalDate
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.lerp
 
 @Composable
 fun NutritionScreen(
@@ -55,17 +56,30 @@ fun NutritionScreen(
             date.year, date.monthValue - 1, date.dayOfMonth
         )
     }
-    LaunchedEffect(Unit) {
-        vm.openDatePicker.collect {
-            datePicker.show()
-        }
-    }
+    LaunchedEffect(Unit) { vm.openDatePicker.collect { datePicker.show() } }
+
+    // ---- THEME HOOKS ----
+    // IMPORTANT: derive darkness from the *current Material theme*, not the system setting.
+    val isDark = !MaterialTheme.colors.isLight
+
+    // Force obvious contrast for cards so dark/light are undeniably different
+    val cardBg = if (isDark) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
+
+    // FAB rule: Dark = green, Light = blue
+    val fabContainer = if (isDark) Color(0xFF2E7D32) else Color(0xFF1976D2)
+    val fabContent = Color.White
+
+    // Recommended chips background: stronger on dark
+    val recChipBg = if (isDark)
+        MaterialTheme.colors.primary.copy(alpha = 0.28f)
+    else
+        MaterialTheme.colors.primary.copy(alpha = 0.08f)
 
     Scaffold(
+        backgroundColor = MaterialTheme.colors.background,
         topBar = {
             TopAppBar(
-                title = {
-                },
+                title = { /* keep empty or show date if you want */ },
                 actions = {
                     IconButton(onClick = { datePicker.show() }) {
                         Icon(
@@ -75,15 +89,17 @@ fun NutritionScreen(
                         )
                     }
                 },
-                backgroundColor = Color.White,
+                backgroundColor = MaterialTheme.colors.surface,
+                contentColor = MaterialTheme.colors.onSurface,
                 elevation = 0.dp
             )
-
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { preselectFood = null; showAdd = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Add food")
-            }
+            FloatingActionButton(
+                onClick = { showAdd = true },
+                backgroundColor = fabContainer,
+                contentColor = fabContent
+            ) { Icon(Icons.Default.Add, contentDescription = "Add food") }
         }
     ) { padding ->
         Column(
@@ -97,6 +113,7 @@ fun NutritionScreen(
             Card(
                 shape = RoundedCornerShape(16.dp),
                 elevation = 3.dp,
+                backgroundColor = cardBg,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(Modifier.padding(16.dp)) {
@@ -113,6 +130,7 @@ fun NutritionScreen(
             Card(
                 shape = RoundedCornerShape(16.dp),
                 elevation = 3.dp,
+                backgroundColor = cardBg,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(Modifier.padding(16.dp)) {
@@ -128,8 +146,8 @@ fun NutritionScreen(
                             items(recommended) { f ->
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.08f)),
-                                    color = MaterialTheme.colors.primary.copy(alpha = 0.06f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.10f)),
+                                    color = recChipBg,
                                     modifier = Modifier.clickable {
                                         preselectFood = f
                                         showAdd = true
@@ -138,9 +156,7 @@ fun NutritionScreen(
                                     Text(
                                         f.name,
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        style = MaterialTheme.typography.body2.copy(
-                                            fontWeight = FontWeight.Medium
-                                        )
+                                        style = MaterialTheme.typography.body2.copy(fontWeight = FontWeight.Medium)
                                     )
                                 }
                             }
@@ -153,10 +169,7 @@ fun NutritionScreen(
             Divider()
             Text(
                 "Daily Summary",
-                style = MaterialTheme.typography.subtitle1.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp
-                )
+                style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.Bold, fontSize = 17.sp)
             )
             SummaryRow(totals = totals)
 
@@ -164,19 +177,16 @@ fun NutritionScreen(
             Card(
                 elevation = 3.dp,
                 shape = RoundedCornerShape(16.dp),
+                backgroundColor = cardBg,
                 border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.06f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (meals.isEmpty()) {
                     Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
+                        Modifier.fillMaxWidth().padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape))
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(42.dp).clip(CircleShape))
                         Spacer(Modifier.height(8.dp))
                         Text("No items yet", style = MaterialTheme.typography.subtitle1)
                         Text("Tap + to log your first meal", style = MaterialTheme.typography.body2)
@@ -185,9 +195,7 @@ fun NutritionScreen(
                     LazyColumn(contentPadding = PaddingValues(12.dp)) {
                         items(meals, key = { it.entry.id }) { m ->
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 MealBadge(type = m.entry.mealType)
@@ -196,12 +204,10 @@ fun NutritionScreen(
                                     Text(
                                         m.food.name,
                                         style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis
                                     )
                                     val scaled = scale(m.food, m.entry.grams)
-                                    Text("${m.entry.grams} g • ${scaled.pretty()}",
-                                        style = MaterialTheme.typography.body2)
+                                    Text("${m.entry.grams} g • ${scaled.pretty()}", style = MaterialTheme.typography.body2)
                                 }
                                 IconButton(onClick = { vm.deleteMeal(m.entry.id) }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete")
@@ -260,9 +266,7 @@ private fun ConditionSection(
             Button(onClick = {
                 val t = text.trim()
                 if (t.isNotEmpty()) {
-                    onAdd(t)
-                    text = ""
-                    adding = false
+                    onAdd(t); text = ""; adding = false
                 }
             }) { Text("Save") }
         }
@@ -271,10 +275,7 @@ private fun ConditionSection(
     Spacer(Modifier.height(6.dp))
 
     if (conditions.isEmpty()) {
-        Text(
-            "Add your chronic conditions to see tailored food suggestions.",
-            style = MaterialTheme.typography.caption
-        )
+        Text("Add your chronic conditions to see tailored food suggestions.", style = MaterialTheme.typography.caption)
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             conditions.forEach { c ->
@@ -296,10 +297,20 @@ private fun ConditionChip(
     onToggle: () -> Unit,
     onRemove: () -> Unit
 ) {
+    val isDark = !MaterialTheme.colors.isLight
+    val chipBg =
+        if (selected) {
+            if (isDark) MaterialTheme.colors.primary.copy(alpha = 0.28f)
+            else MaterialTheme.colors.primary.copy(alpha = 0.12f)
+        } else {
+            // unselected: keep readable on dark (not pitch black)
+            if (isDark) Color(0xFF2A2A2A) else Color(0xFFFFFFFF)
+        }
+
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.15f) else MaterialTheme.colors.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.08f))
+        color = chipBg,
+        border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.10f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -310,9 +321,7 @@ private fun ConditionChip(
             Icon(
                 Icons.Default.Clear,
                 contentDescription = "Remove",
-                modifier = Modifier
-                    .size(16.dp)
-                    .clickable { onRemove() }
+                modifier = Modifier.size(16.dp).clickable { onRemove() }
             )
         }
     }
@@ -321,16 +330,14 @@ private fun ConditionChip(
 // ------------ Summary chips ------------
 @Composable
 private fun SummaryRow(totals: NutritionRepository.Totals) {
-    // Pastel backgrounds for light theme; in dark theme we tone them down
-    val bgCalories = pastel(Color(0xFFFFE8D5))   // soft orange
-    val bgCarbs    = pastel(Color(0xFFFEF7D1))   // soft yellow
-    val bgProtein  = pastel(Color(0xFFE3F2FD))   // soft blue
-    val bgFat      = pastel(Color(0xFFFCE4EC))   // soft pink
+    // Pastel backgrounds for light; reduce blending on dark so they don't wash out.
+    val bgCalories = pastel(Color(0xFFEF9A9A), darkStrength = 0.75f)   // soft red
+    val bgCarbs    = pastel(Color(0xFFFFCC80), darkStrength = 0.75f)   // warm orange
+    val bgProtein  = pastel(Color(0xFF90CAF9), darkStrength = 0.75f)   // soft blue
+    val bgFat      = pastel(Color(0xFFA5D6A7), darkStrength = 0.75f)   // soft green
 
     Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp),
+        Modifier.fillMaxWidth().padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         SummaryChip(title = "Calories", value = "${totals.kcal} kcal", background = bgCalories)
@@ -340,10 +347,7 @@ private fun SummaryRow(totals: NutritionRepository.Totals) {
     }
 }
 
-/**
- * Flat, modern chip with pastel background.
- * No borders / no gray halo; adjusts text colors for readability.
- */
+/** Flat chip with pastel background; adjusts text via onSurface. */
 @Composable
 private fun SummaryChip(
     title: String,
@@ -353,45 +357,32 @@ private fun SummaryChip(
     val onSurface = MaterialTheme.colors.onSurface
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = background,     // pastel fill
-        elevation = 0.dp,       // no shadow edge
-        modifier = Modifier
-            .padding(horizontal = 4.dp)
-            .defaultMinSize(minWidth = 86.dp)
+        color = background,
+        elevation = 0.dp,
+        modifier = Modifier.padding(horizontal = 4.dp).defaultMinSize(minWidth = 86.dp)
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.caption.copy(
-                    color = onSurface.copy(alpha = 0.70f)
-                )
-            )
+            Text(title, style = MaterialTheme.typography.caption.copy(color = onSurface.copy(alpha = 0.70f)))
             Spacer(Modifier.height(2.dp))
-            Text(
-                value,
-                style = MaterialTheme.typography.subtitle2.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = onSurface
-                )
-            )
+            Text(value, style = MaterialTheme.typography.subtitle2.copy(fontWeight = FontWeight.Bold, color = onSurface))
         }
     }
 }
 
-/**
- * Use a vivid pastel in light theme; in dark theme fall back to a subtle tinted surface.
- */
 @Composable
-private fun pastel(lightColor: Color): Color {
-    return if (!isSystemInDarkTheme()) {
-        lightColor
-    } else {
-        // very subtle tint over surface in dark mode
-        MaterialTheme.colors.surface.copy(alpha = 0.08f)
-    }
+fun pastel(
+    lightColor: Color,
+    darkStrength: Float = 0.60f
+): Color {
+    // Use given pastel in light theme
+    if (MaterialTheme.colors.isLight) return lightColor
+    // In dark: blend from surface to pastel, smaller darkStrength => more contrast
+    val surface = MaterialTheme.colors.surface
+    val t = darkStrength.coerceIn(0f, 1f)
+    return lerp(surface, lightColor, t)
 }
 
 @Composable
@@ -404,7 +395,8 @@ private fun MealBadge(type: MealType) {
     }
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colors.primary.copy(alpha = 0.08f)
+        color = MaterialTheme.colors.primary.copy(alpha = 0.08f),
+        elevation = 0.dp
     ) {
         Text(
             label,
@@ -457,9 +449,7 @@ private fun AddFoodDialog(
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.06f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 220.dp)
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)
                 ) {
                     if (foods.isEmpty()) {
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -469,10 +459,7 @@ private fun AddFoodDialog(
                         LazyColumn {
                             items(foods) { f ->
                                 Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .clickable { selected = f }
-                                        .padding(12.dp),
+                                    Modifier.fillMaxWidth().clickable { selected = f }.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(Modifier.weight(1f)) {
@@ -491,11 +478,7 @@ private fun AddFoodDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Meal:", modifier = Modifier.width(56.dp))
                     MealType.values().forEach {
-                        FilterChip(
-                            selected = meal == it,
-                            onClick = { meal = it },
-                            text = it.name
-                        )
+                        FilterChip(selected = meal == it, onClick = { meal = it }, text = it.name)
                         Spacer(Modifier.width(6.dp))
                     }
                 }
@@ -536,10 +519,17 @@ private fun AddFoodDialog(
 
 @Composable
 private fun FilterChip(selected: Boolean, onClick: () -> Unit, text: String) {
+    val isDark = !MaterialTheme.colors.isLight
+    val bg = if (selected) {
+        if (isDark) MaterialTheme.colors.primary.copy(alpha = 0.28f)
+        else MaterialTheme.colors.primary.copy(alpha = 0.12f)
+    } else {
+        if (isDark) Color(0xFF2A2A2A) else Color(0xFFFFFFFF)
+    }
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.15f) else MaterialTheme.colors.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.08f)),
+        color = bg,
+        border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.10f)),
         modifier = Modifier.clickable { onClick() }
     ) {
         Text(text, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.caption)

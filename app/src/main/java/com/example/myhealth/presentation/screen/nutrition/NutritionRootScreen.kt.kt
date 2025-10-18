@@ -1,7 +1,3 @@
-// NutritionRootScreen.kt
-// Purpose: Inner bottom navigation for Nutrition module with two tabs (Overview | State).
-// NOTE: We DO NOT rename your existing NutritionScreen. The Overview tab calls your current NutritionScreen().
-
 package com.example.myhealth.presentation.screen.nutrition
 
 import android.app.Application
@@ -22,6 +18,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.foundation.background
+
 
 // Routes used only for inner navigation inside the Nutrition module
 const val ROUTE_NUTRITION_OVERVIEW: String = "nutrition/overview"
@@ -43,6 +41,7 @@ fun NutritionRootScreen() {
     )
 
     Scaffold(
+        modifier = Modifier.background(MaterialTheme.colors.background),
         bottomBar = {
             BottomNavigation {
                 val navBackStackEntry by innerNav.currentBackStackEntryAsState()

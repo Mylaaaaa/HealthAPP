@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
@@ -13,10 +12,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,7 +34,10 @@ data class WeightRow(
     val timeText: String
 )
 
-/** Drop-in UI for the Record weight screen. */
+/**
+ * Weight screen content that adapts to light/dark theme automatically.
+ * All fixed colors have been replaced with MaterialTheme tokens.
+ */
 @Composable
 fun RecordWeightContent(
     weightText: String,
@@ -53,7 +51,7 @@ fun RecordWeightContent(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF7F9FC)),
+            .background(MaterialTheme.colors.background),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -68,8 +66,15 @@ fun RecordWeightContent(
 
         if (recent.isNotEmpty()) {
             item { SectionHeader(text = "Previous measurements") }
-            item {
-                PreviousMeasurementsCard(items = recent, onDelete = onDelete)
+            // Render each row inside an item{} to stay within a @Composable context
+            recent.forEachIndexed { index, row ->
+                item {
+                    PreviousMeasurementRow(
+                        row = row,
+                        showDivider = index != recent.lastIndex,
+                        onDelete = onDelete
+                    )
+                }
             }
         }
 
@@ -85,7 +90,7 @@ fun RecordWeightContent(
     }
 }
 
-/* ---------- Pieces ---------- */
+/* ---------- Components ---------- */
 
 @Composable
 private fun WeightInputCard(
@@ -96,38 +101,54 @@ private fun WeightInputCard(
 ) {
     Card(
         elevation = 6.dp,
-        shape = RoundedCornerShape(14.dp),
-        backgroundColor = Color.White,
+        shape = MaterialTheme.shapes.medium,
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text("New record (Kg)", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(
+                "New record (Kg)",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+                color = MaterialTheme.colors.onSurface
+            )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
-                leadingIcon = { Icon(Icons.Filled.Accessibility, null, tint = Color(0xFF00B894)) },
-                trailingIcon = { Text("Kg", color = Color.Gray) },
+                leadingIcon = {
+                    Icon(Icons.Filled.Accessibility, null, tint = MaterialTheme.colors.primary)
+                },
+                trailingIcon = {
+                    Text("Kg", color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
+                },
                 isError = error != null,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             if (error != null) {
                 Spacer(Modifier.height(6.dp))
-                Text(error, color = Color(0xFFD32F2F), fontSize = 12.sp)
+                Text(
+                    error,
+                    color = MaterialTheme.colors.error,
+                    fontSize = 12.sp
+                )
             }
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = onAddClick,
                 enabled = error == null && value.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF4C6FFF)),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = MaterialTheme.colors.primary,
+                    contentColor = MaterialTheme.colors.onPrimary
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp)
             ) {
-                Icon(Icons.Filled.FitnessCenter, null, tint = Color.White)
+                Icon(Icons.Filled.FitnessCenter, null)
                 Spacer(Modifier.width(8.dp))
-                Text("Add", color = Color.White, fontWeight = FontWeight.Medium)
+                Text("Add", fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -135,45 +156,75 @@ private fun WeightInputCard(
 
 @Composable
 private fun SectionHeader(text: String) {
-    Text(text, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = Color(0xFF3E5FFF))
+    Text(
+        text,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 18.sp,
+        color = MaterialTheme.colors.primary
+    )
 }
 
 @Composable
-private fun PreviousMeasurementsCard(
-    items: List<WeightRow>,
+private fun PreviousMeasurementRow(
+    row: WeightRow,
+    showDivider: Boolean,
     onDelete: (String) -> Unit
 ) {
-    Card(
-        elevation = 4.dp,
-        shape = RoundedCornerShape(14.dp),
-        backgroundColor = Color.White,
-        modifier = Modifier.fillMaxWidth()
+    // Light → blue (primary), Dark → red (error)
+    val trashTint = if (MaterialTheme.colors.isLight) {
+        MaterialTheme.colors.primary
+    } else {
+        MaterialTheme.colors.error
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colors.surface)
     ) {
-        Column(Modifier.padding(vertical = 8.dp)) {
-            items.forEach { row ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.Accessibility, null, tint = Color(0xFF4C6FFF))
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("${trim(row.valueKg)} Kg", fontWeight = FontWeight.Medium)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Timer, null, tint = Color.Gray, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(row.timeText, color = Color.Gray, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Accessibility, null, tint = MaterialTheme.colors.primary)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "${trim(row.valueKg)} Kg",
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colors.onSurface
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        Icons.Filled.Delete, null, tint = Color(0xFFD32F2F),
-                        modifier = Modifier.size(20.dp).clickable { onDelete(row.id) }
+                        Icons.Filled.Timer,
+                        null,
+                        tint = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        row.timeText,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (row != items.last()) Divider(color = Color(0xFFF1F1F1))
             }
+            Icon(
+                Icons.Filled.Delete,
+                null,
+                tint = trashTint,                 // ← use theme-aware tint
+                modifier = Modifier
+                    .size(20.dp)
+                    .clickable { onDelete(row.id) }
+            )
+        }
+
+        if (showDivider) {
+            Divider(color = MaterialTheme.colors.onSurface.copy(alpha = 0.08f))
         }
     }
 }
@@ -182,37 +233,54 @@ private fun PreviousMeasurementsCard(
 private fun WeeklyAverageCard(avgText: String, sparkValues: List<Float>) {
     Card(
         elevation = 4.dp,
-        shape = RoundedCornerShape(14.dp),
-        backgroundColor = Color.White,
+        shape = MaterialTheme.shapes.medium,
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text("Average this week", fontWeight = FontWeight.SemiBold)
+            Text(
+                "Average this week",
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colors.onSurface
+            )
             Spacer(Modifier.height(6.dp))
-            Text(avgText, fontSize = 18.sp, color = Color(0xFF263238))
+            Text(
+                avgText,
+                fontSize = 18.sp,
+                color = MaterialTheme.colors.onSurface
+            )
             Spacer(Modifier.height(10.dp))
-            Sparkline(data = sparkValues, height = 44.dp, tint = Color(0xFF7C4DFF))
+            Sparkline(
+                data = sparkValues,
+                height = 44.dp,
+                tint = MaterialTheme.colors.primary   // ← same color in light/dark
+            )
         }
     }
 }
 
-/* ---------- Tiny sparkline ---------- */
+/* ---------- Sparkline ---------- */
 @Composable
 private fun Sparkline(data: List<Float>, height: Dp, tint: Color) {
     if (data.size < 2) {
-        Box(Modifier.fillMaxWidth().height(height))
+        Spacer(Modifier.fillMaxWidth().height(height))
         return
     }
+
+    // Capture theme colors in Composable scope (OK)
+    val trackColor = MaterialTheme.colors.onSurface.copy(alpha = 0.1f)
+    val bgColor = MaterialTheme.colors.onSurface.copy(alpha = 0.05f)
+
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFFF8F7FF))
+            .clip(MaterialTheme.shapes.small)
+            .background(bgColor)
     ) {
         val minV = data.minOrNull() ?: 0f
         val maxV = data.maxOrNull() ?: 1f
-        val span = max(1e-6f, maxV - minV)
+        val span = kotlin.math.max(1e-6f, maxV - minV)
         val w = size.width
         val h = size.height
         val stepX = w / (data.size - 1)
@@ -222,13 +290,19 @@ private fun Sparkline(data: List<Float>, height: Dp, tint: Color) {
             val y = h - ((v - minV) / span) * h
             if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
+
+        // Use captured colors inside draw scope (NOT calling MaterialTheme here)
         drawLine(
-            color = Color(0xFFE5E1FF),
+            color = trackColor,
             start = androidx.compose.ui.geometry.Offset(0f, h - 1f),
-            end = androidx.compose.ui.geometry.Offset(w, h - 1f),
+            end   = androidx.compose.ui.geometry.Offset(w, h - 1f),
             strokeWidth = 2f
         )
-        drawPath(path = path, color = tint, style = Stroke(width = 5f, cap = StrokeCap.Round))
+        drawPath(
+            path = path,
+            color = tint,
+            style = Stroke(width = 5f, cap = StrokeCap.Round)
+        )
         val lastY = h - ((data.last() - minV) / span) * h
         drawCircle(color = tint, radius = 6f, center = androidx.compose.ui.geometry.Offset(w, lastY))
     }

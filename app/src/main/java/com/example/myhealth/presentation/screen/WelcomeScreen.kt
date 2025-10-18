@@ -1,13 +1,27 @@
 package com.example.myhealth.presentation.screen
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -31,7 +45,10 @@ import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -53,7 +70,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -64,18 +80,30 @@ import com.example.myhealth.presentation.navigation.Screen
 import com.example.myhealth.presentation.theme.HealthConnectTheme
 import kotlin.math.max
 import kotlin.math.min
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
-
 
 private object Dimens {
+    // Screen paddings
     val screenH = 16.dp
     val screenV = 12.dp
+    // Card & tiles
     val cardRadius = 18.dp
-    val gridItemHeight = 108.dp
+    val cardPadding = 12.dp
+    val cardElev = 4.dp          // 普通卡片阴影
+    val tileElev = 3.dp          // 小块/信息块阴影
+    // Feature grid
+    val featureCardH = 108.dp
     val gridHGap = 12.dp
     val gridVGap = 12.dp
+    // Pills / CTA
+    val pillHeight = 64.dp
+    val ctaH = 44.dp
+    val iconSm = 18.dp
+    val iconMd = 22.dp
+    val iconLg = 44.dp
+    val fontSm = 12.sp
+    val chipRadius = 50.dp
 }
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WelcomeScreen(
@@ -445,14 +473,14 @@ private fun CapsuleChip(text: String) {
         else
             colors.primary.copy(alpha = 0.12f),
         elevation = 0.dp,
-        shape = RoundedCornerShape(50),
+        shape = RoundedCornerShape(Dimens.chipRadius),
         modifier = Modifier.semantics { contentDescription = "Streak: $text" }
     ) {
         Text(
             text,
             color = if (isDark) Color.White else colors.onPrimary,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            fontSize = 12.sp
+            fontSize = Dimens.fontSm
         )
     }
 }
@@ -468,8 +496,8 @@ private fun CtaButton(
     Card(
         backgroundColor = bg,
         elevation = 6.dp,
-        modifier = modifier
-            .height(48.dp) // a11y min touch target
+        modifier = modifier.height(Dimens.ctaH)
+            // a11y min touch target
             .clickable { onClick() }
             .semantics {
                 role = Role.Button
@@ -484,7 +512,13 @@ private fun CtaButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(Dimens.iconSm),
+                tint = Color.White
+            )
+
             Spacer(Modifier.width(8.dp))
             Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
@@ -496,8 +530,7 @@ private fun StatPill(icon: ImageVector, value: String, label: String, tint: Colo
     Card(
         elevation = 2.dp,
         backgroundColor = MaterialTheme.colors.surface,
-        modifier = Modifier
-            .height(64.dp)
+        modifier = Modifier.height(Dimens.pillHeight)
             .widthIn(min = 140.dp)
             .semantics { contentDescription = "$label today: $value" }
     ) {
@@ -507,7 +540,7 @@ private fun StatPill(icon: ImageVector, value: String, label: String, tint: Colo
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+            Icon(icon, null, tint = tint, modifier = Modifier.size(Dimens.iconMd))
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(value, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = MaterialTheme.colors.onSurface)
@@ -538,9 +571,16 @@ private fun FeatureCard(
         shape = RoundedCornerShape(Dimens.cardRadius),
         backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
-            .height(Dimens.gridItemHeight)
+            .height(Dimens.featureCardH)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clickable(interactionSource = interaction, indication = null) { onClick() }
+            .semantics {
+                role = Role.Button
+                contentDescription = "Open $title"
+            }
+            .clickable(
+                interactionSource = interaction,
+                indication = null
+            ) { onClick() }
     ) {
         Column(
             Modifier
@@ -551,11 +591,11 @@ private fun FeatureCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(Dimens.iconLg)
                     .background(tint.copy(alpha = 0.12f), shape = CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+                Icon(icon, null, tint = tint, modifier = Modifier.size(Dimens.iconMd))
             }
             Spacer(Modifier.height(8.dp))
             Text(
@@ -573,7 +613,6 @@ private fun FeatureCard(
         }
     }
 }
-
 
 /** Per-index accent color so cards look less uniform. */
 private fun accentFor(index: Int): Color {
@@ -606,10 +645,11 @@ private fun TrendMiniCard(
     val wowPlain = wowText.first
 
     Card(
-        elevation = 4.dp,
+        elevation = Dimens.cardElev,
+        shape = RoundedCornerShape(Dimens.cardRadius),
         backgroundColor = MaterialTheme.colors.surface,
         modifier = modifier
-            .height(96.dp)
+            .height(112.dp)
             .clickable { onClick() }
             .semantics {
                 role = Role.Button
@@ -627,7 +667,10 @@ private fun TrendMiniCard(
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(10.dp)
+                .padding(
+                    horizontal = Dimens.cardPadding,
+                    vertical = Dimens.cardPadding
+                )
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -644,17 +687,19 @@ private fun TrendMiniCard(
                 tint = accent,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .height(36.dp)
             )
+            Spacer(Modifier.height(8.dp))
             if (values.isNotEmpty()) {
                 val end = values.last()
                 Text(
                     "${trimNumber(end)} $unit",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f),
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.82f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Spacer(Modifier.height(2.dp))
             }
         }
     }
@@ -702,14 +747,15 @@ private fun ReminderCard(
     onSecondary: () -> Unit
 ) {
     Card(
-        elevation = 4.dp,
+        elevation = Dimens.cardElev,
         shape = RoundedCornerShape(Dimens.cardRadius),
         backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
             .padding(horizontal = Dimens.screenH, vertical = 8.dp)
             .fillMaxWidth()
             .animateContentSize()
-    ) {
+    )
+    {
         Column(Modifier.padding(12.dp)) {
             Text(text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
@@ -734,7 +780,7 @@ private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
     ) {
         // ---- Left card: streak ----
         Card(
-            elevation = 3.dp,
+            elevation = Dimens.tileElev,
             backgroundColor = MaterialTheme.colors.surface,
             modifier = Modifier
                 .weight(1f)
@@ -815,7 +861,7 @@ private fun GoalRingCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        elevation = 3.dp,
+        elevation = Dimens.tileElev,
         backgroundColor = MaterialTheme.colors.surface,
         modifier = modifier
             .height(112.dp)
@@ -877,7 +923,7 @@ private fun HealthTipCard(
     onClick: () -> Unit
 ) {
     Card(
-        elevation = 3.dp,
+        elevation = Dimens.tileElev,
         backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
             .padding(horizontal = 16.dp)
@@ -1017,7 +1063,7 @@ private fun PermissionBanner(
     onClick: () -> Unit
 ) {
     Card(
-        elevation = 2.dp,
+        elevation = Dimens.tileElev,
         shape = RoundedCornerShape(Dimens.cardRadius),
         backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier

@@ -1,8 +1,7 @@
 package com.example.myhealth.presentation.screen
 
-import androidx.compose.material.TextButton
-import com.example.myhealth.presentation.loginregister.FakeAuthStore
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,16 +19,15 @@ import androidx.compose.material.Card
 import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
-import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Hotel
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Settings
@@ -44,6 +42,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,13 +59,11 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.example.myhealth.presentation.home.HomeUiState
+import com.example.myhealth.presentation.loginregister.FakeAuthStore
 import com.example.myhealth.presentation.navigation.Screen
 import com.example.myhealth.presentation.theme.HealthConnectTheme
 import kotlin.math.max
 import kotlin.math.min
-import androidx.compose.material.Colors
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -99,6 +101,9 @@ fun WelcomeScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
+            // Screen-level semantics for TalkBack entry point
+            .semantics { contentDescription = "Home screen"; }
+            .testTag("home_screen")
     ) {
 
         // ---------- Gradient hero ----------
@@ -114,6 +119,7 @@ fun WelcomeScreen(
                     )
                 )
                 .padding(horizontal = 16.dp, vertical = 18.dp)
+                .semantics { contentDescription = "Header"; }
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -135,20 +141,30 @@ fun WelcomeScreen(
 
                 if (!isLoggedIn) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TextButton(onClick = {
-                            // 切换到登录：RootApp 会显示 AuthNavHost
-                            FakeAuthStore.logout()
-                        }) { Text("Login", color = Color.White) }
+                        TextButton(
+                            onClick = { FakeAuthStore.logout() },
+                            modifier = Modifier.semantics {
+                                role = Role.Button
+                                contentDescription = "Login"
+                            }
+                        ) { Text("Login", color = Color.White) }
 
-                        TextButton(onClick = {
-                            // 切换到注册：RootApp 里先登出再显示 AuthNavHost；在 Auth 里选择 register
-                            FakeAuthStore.logout()
-                        }) { Text("Register", color = Color.White) }
+                        TextButton(
+                            onClick = { FakeAuthStore.logout() },
+                            modifier = Modifier.semantics {
+                                role = Role.Button
+                                contentDescription = "Register"
+                            }
+                        ) { Text("Register", color = Color.White) }
                     }
                 } else {
-                    TextButton(onClick = {
-                        FakeAuthStore.logout() // RootApp 观察到 false 后自动显示 AuthNavHost（登录页）
-                    }) {
+                    TextButton(
+                        onClick = { FakeAuthStore.logout() },
+                        modifier = Modifier.semantics {
+                            role = Role.Button
+                            contentDescription = "Logout"
+                        }
+                    ) {
                         Text("Logout", color = Color.White)
                     }
                 }
@@ -161,19 +177,21 @@ fun WelcomeScreen(
             PermissionBanner(
                 text = "Some permissions are missing. Grant permissions to unlock auto-tracking.",
                 actionText = "Grant permissions",
-                icon = Icons.Filled.Error
-            ) { navController.navigate(Screen.SettingsScreen.route) }
+                icon = Icons.Filled.Error,
+                onClick = { navController.navigate(Screen.SettingsScreen.route) }
+            )
             Spacer(Modifier.height(8.dp))
         }
         if (!hasBackgroundReadPermission) {
             PermissionBanner(
                 text = "Background read is off. Enable to keep data up to date.",
-                actionText = "Enable background read"
-            ) { navController.navigate(Screen.SettingsScreen.route) }
+                actionText = "Enable background read",
+                onClick = { navController.navigate(Screen.SettingsScreen.route) }
+            )
             Spacer(Modifier.height(4.dp))
         }
 
-        // ---------- Reminder (no duplicate CTA) ----------
+        // ---------- Reminder ----------
         val stepsRemaining = max(0, stepGoal - steps)
         val reminderText = when {
             stepsRemaining > 0 -> "You're ${stepsRemaining} steps away from today's goal."
@@ -182,8 +200,8 @@ fun WelcomeScreen(
         }
         ReminderCard(
             text = reminderText,
-            primaryText = "start exercise",        // key change to avoid duplicating Start Exercise
-            secondaryText = "Record Weight",
+            primaryText = "Start exercise",
+            secondaryText = "Record weight",
             onPrimary = { navController.navigate(Screen.ExerciseSessions.route) },
             onSecondary = { navController.navigate(Screen.InputReadings.route) }
         )
@@ -192,7 +210,8 @@ fun WelcomeScreen(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 2.dp),
+                .padding(vertical = 2.dp)
+                .semantics { contentDescription = "Today summary"; },
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(horizontal = 16.dp)
         ) {
@@ -205,7 +224,8 @@ fun WelcomeScreen(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .semantics { contentDescription = "Weekly trends"; },
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             TrendMiniCard(
@@ -246,8 +266,7 @@ fun WelcomeScreen(
             )
         }
 
-        // ---------- Feature grid (4 columns, compact & lively) ----------
-        // ---------- Feature grid (4 columns, compact & lively) ----------
+        // ---------- Feature grid (3 columns, fixed height; no nested scroll) ----------
         val entries = listOf(
             NavEntry(Screen.ExerciseSessions,  "Exercise sessions", Icons.Filled.FitnessCenter),
             NavEntry(Screen.SleepSessions,     "Sleep sessions",    Icons.Filled.Hotel),
@@ -264,12 +283,21 @@ fun WelcomeScreen(
         val rows = (entries.size + columns - 1) / columns
         val gridHeight = (rows * itemHeightDp + (rows - 1) * vSpacing + contentPaddingV).dp
 
+        Text(
+            text = "Explore",
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .semantics { heading() },
+            style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
+        )
+
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             userScrollEnabled = false,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(gridHeight),
+                .height(gridHeight)
+                .semantics { contentDescription = "Feature grid"; },
             verticalArrangement = Arrangement.spacedBy(vSpacing.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
@@ -288,7 +316,6 @@ fun WelcomeScreen(
 
         Spacer(Modifier.height(8.dp))
 
-
         // ---------- Streak & Badge ----------
         StreakBadgeRow(
             streakDays = currentStreakDays,
@@ -299,7 +326,8 @@ fun WelcomeScreen(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .semantics { contentDescription = "Goals"; },
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             GoalRingCard(
@@ -325,14 +353,15 @@ fun WelcomeScreen(
             )
         }
 
-        // ---------- Explore ----------
+        // ---------- Health tip ----------
         Text(
-            text = "Explore",
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            text = "Daily tip",
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .semantics { heading() },
             style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
         )
 
-        // ---------- Health tip ----------
         HealthTipCard(
             tip = "Avoid screens 1 hour before bed.",
             actionText = "Learn more"
@@ -373,11 +402,12 @@ private fun CapsuleChip(text: String) {
 
     Card(
         backgroundColor = if (isDark)
-            Color.White.copy(alpha = 0.12f) // darker background, subtle
+            Color.White.copy(alpha = 0.12f)
         else
             colors.primary.copy(alpha = 0.12f),
         elevation = 0.dp,
-        shape = RoundedCornerShape(50)
+        shape = RoundedCornerShape(50),
+        modifier = Modifier.semantics { contentDescription = "Streak: $text" }
     ) {
         Text(
             text,
@@ -387,7 +417,6 @@ private fun CapsuleChip(text: String) {
         )
     }
 }
-
 
 @Composable
 private fun CtaButton(
@@ -401,8 +430,13 @@ private fun CtaButton(
         backgroundColor = bg,
         elevation = 6.dp,
         modifier = modifier
-            .height(44.dp)
+            .height(48.dp) // a11y min touch target
             .clickable { onClick() }
+            .semantics {
+                role = Role.Button
+                contentDescription = title
+            }
+            .testTag("cta_$title")
     ) {
         Row(
             Modifier
@@ -426,6 +460,7 @@ private fun StatPill(icon: ImageVector, value: String, label: String, tint: Colo
         modifier = Modifier
             .height(64.dp)
             .widthIn(min = 140.dp)
+            .semantics { contentDescription = "$label today: $value" }
     ) {
         Row(
             Modifier
@@ -444,17 +479,8 @@ private fun StatPill(icon: ImageVector, value: String, label: String, tint: Colo
 }
 
 /**
- * Feature card with soft icon accent, centered 2-line title, and press feedback.
- * Uses scale animation + no Indication (no deprecated ripple).
- */
-/**
- * Feature card with soft icon accent, centered title, and press feedback.
- * Single-word titles stay on one line (ellipsis); multi-word titles may wrap to two lines.
- */
-/**
  * Feature card with soft icon accent, press feedback, and smart title sizing.
- * - Single-word titles: auto-fit to ONE line (no ellipsis, no wrap).
- * - Multi-word titles: up to TWO lines, neat center alignment.
+ * Accessibility: role=Button + contentDescription=title
  */
 @Composable
 private fun FeatureCard(
@@ -468,12 +494,11 @@ private fun FeatureCard(
     val scale by animateFloatAsState(targetValue = if (pressed) 0.98f else 1f, label = "card-scale")
 
     val isSingleWord = !title.contains(' ')
-    // Start a little larger, we’ll shrink only if needed
     var fontSize by remember(title) { mutableStateOf(if (isSingleWord) 14.sp else 13.sp) }
     val minFont = if (isSingleWord) 11.sp else 12.sp
 
     Card(
-        elevation = 4.dp,
+        elevation = if (pressed) 2.dp else 4.dp,
         shape = RoundedCornerShape(18.dp),
         backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
@@ -484,6 +509,11 @@ private fun FeatureCard(
                 indication = null,
                 onClick = onClick
             )
+            .semantics {
+                role = Role.Button
+                contentDescription = title
+            }
+            .testTag("feature_$title")
     ) {
         Column(
             Modifier
@@ -492,7 +522,6 @@ private fun FeatureCard(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Icon with soft colored circle
             Box(
                 modifier = Modifier
                     .size(44.dp)
@@ -504,16 +533,13 @@ private fun FeatureCard(
 
             Spacer(Modifier.height(8.dp))
 
-            // Title: auto-fit single-word to one line
             Text(
                 text = title,
                 color = MaterialTheme.colors.onSurface,
                 textAlign = TextAlign.Center,
                 lineHeight = 15.sp,
-                // For single word: 1 line + Clip (no ellipsis) + auto downsize
-                // For multi word: up to 2 lines
                 maxLines = if (isSingleWord) 1 else 2,
-                overflow = if (isSingleWord) TextOverflow.Clip else TextOverflow.Clip,
+                overflow = TextOverflow.Clip,
                 fontSize = fontSize,
                 modifier = Modifier
                     .padding(horizontal = 4.dp)
@@ -555,12 +581,27 @@ private fun TrendMiniCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val latest = values.lastOrNull()
+    val wowPlain = wowText.first
+
     Card(
         elevation = 4.dp,
         backgroundColor = MaterialTheme.colors.surface,
         modifier = modifier
             .height(96.dp)
             .clickable { onClick() }
+            .semantics {
+                role = Role.Button
+                // Read out: "Steps trend, latest 8200 , up 12%"
+                contentDescription = buildString {
+                    append("$title trend")
+                    latest?.let {
+                        append(", latest ${trimNumber(it)}")
+                        if (unit.isNotBlank()) append(" $unit")
+                    }
+                    if (wowPlain.isNotBlank()) append(", $wowPlain")
+                }
+            }
     ) {
         Column(
             Modifier
@@ -645,6 +686,7 @@ private fun ReminderCard(
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth()
+            .semantics { contentDescription = "Reminder: $text" }
     ) {
         Column(Modifier.padding(12.dp)) {
             Text(text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
@@ -670,10 +712,13 @@ private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
         // ---- Left card: streak ----
         Card(
             elevation = 3.dp,
-            backgroundColor = MaterialTheme.colors.surface, // follow theme
+            backgroundColor = MaterialTheme.colors.surface,
             modifier = Modifier
                 .weight(1f)
                 .height(70.dp)
+                .semantics {
+                    contentDescription = "Current streak: $streakDays days"
+                }
         ) {
             Row(
                 Modifier
@@ -697,10 +742,16 @@ private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
         // ---- Right card: badge ----
         Card(
             elevation = 3.dp,
-            backgroundColor = MaterialTheme.colors.surface, // ✅ follow theme
+            backgroundColor = MaterialTheme.colors.surface,
             modifier = Modifier
                 .weight(1f)
                 .height(70.dp)
+                .semantics {
+                    contentDescription = if (showBadgeUnlocked)
+                        "Badge: new badge unlocked"
+                    else
+                        "Badge: keep going to unlock"
+                }
         ) {
             Row(
                 Modifier
@@ -718,7 +769,7 @@ private fun StreakBadgeRow(streakDays: Int, showBadgeUnlocked: Boolean) {
                     Text("Badge", fontWeight = FontWeight.SemiBold)
                     Text(
                         if (showBadgeUnlocked) "New badge unlocked!" else "Keep going to unlock",
-                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f), // ✅ changed
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
                         fontSize = 12.sp
                     )
                 }
@@ -743,7 +794,9 @@ private fun GoalRingCard(
     Card(
         elevation = 3.dp,
         backgroundColor = MaterialTheme.colors.surface,
-        modifier = modifier.height(112.dp)
+        modifier = modifier
+            .height(112.dp)
+            .semantics { contentDescription = "$label goal: $valueLabel" }
     ) {
         Column(
             Modifier
@@ -769,7 +822,6 @@ private fun GoalRingCard(
         }
     }
 }
-
 
 @Composable
 private fun RingProgress(progress: Float, size: Dp, strokeWidth: Dp, tint: Color) {
@@ -803,11 +855,16 @@ private fun HealthTipCard(
 ) {
     Card(
         elevation = 3.dp,
-        backgroundColor = MaterialTheme.colors.surface, // ✅ Use theme-based surface color for light/dark mode
+        backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth()
             .clickable { onClick() }
+            .semantics {
+                role = Role.Button
+                contentDescription = "Health tip: $tip. Action: $actionText"
+            }
+            .testTag("health_tip")
     ) {
         Row(
             Modifier
@@ -816,23 +873,20 @@ private fun HealthTipCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                // Main title for the tip section
                 Text(
                     "Daily tip",
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colors.onSurface // ✅ Adapt text color to theme
+                    color = MaterialTheme.colors.onSurface
                 )
-                // The actual health tip text (slightly dimmed)
                 Text(
                     tip,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f), // ✅ Dimmed for readability
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
                     fontSize = 12.sp
                 )
             }
 
             Spacer(Modifier.width(8.dp))
 
-            // Action text ("Learn more") – keep blue for consistent accent
             Text(
                 actionText,
                 color = MaterialTheme.colors.primary,
@@ -842,7 +896,6 @@ private fun HealthTipCard(
         }
     }
 
-    // Spacing below the card
     Spacer(Modifier.height(8.dp))
 }
 
@@ -864,19 +917,24 @@ private fun RecentActivitySection(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Section title follows theme text color
         Text(
             "Recent",
             style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold),
             color = colors.onSurface,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .weight(1f)
+                .semantics { heading() }
         )
-        // Link color uses primary so it pops in both light/dark
         Text(
             "View all",
-            color = colors.primary, // was Color(0xFF4C6FFF)
+            color = colors.primary,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.clickable { onViewAll() }
+            modifier = Modifier
+                .clickable { onViewAll() }
+                .semantics {
+                    role = Role.Button
+                    contentDescription = "View all recent activity"
+                }
         )
     }
 
@@ -884,42 +942,39 @@ private fun RecentActivitySection(
         items.take(3).forEach { item ->
             Card(
                 elevation = 2.dp,
-                backgroundColor = colors.surface, // was Color.White
+                backgroundColor = colors.surface,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
                     .padding(bottom = 8.dp)
                     .clickable { onItemClick(item.icon) }
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "${item.title}: ${item.time}"
+                    }
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp)
-                        .semantics {
-                            contentDescription = "${item.title}: ${item.time}".trim()
-                        },
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Use primary for icon tint to keep brand accent
                     Icon(
                         imageVector = item.icon,
                         contentDescription = item.title,
                         tint = colors.primary
                     )
-
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        // Title uses onSurface for proper contrast
                         Text(
                             item.title,
                             color = colors.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        // Secondary text uses a dimmed onSurface to de-emphasize
                         Text(
                             item.time,
-                            color = colors.onSurface.copy(alpha = 0.6f), // was Color.Gray
+                            color = colors.onSurface.copy(alpha = 0.6f),
                             fontSize = 12.sp
                         )
                     }
@@ -928,7 +983,6 @@ private fun RecentActivitySection(
         }
     }
 }
-
 
 /* -------------------- Permission banner -------------------- */
 
@@ -947,6 +1001,10 @@ private fun PermissionBanner(
             .fillMaxWidth()
             .height(60.dp)
             .clickable { onClick() }
+            .semantics {
+                role = Role.Button
+                contentDescription = "$text. Action: $actionText"
+            }
     ) {
         Row(
             Modifier
@@ -968,7 +1026,11 @@ private fun PermissionBanner(
 }
 
 /* -------------------- WoW label helper -------------------- */
-private fun wowLabel(current: Float, prev: Float, colors: androidx.compose.material.Colors): Pair<String, androidx.compose.ui.graphics.Color> {
+private fun wowLabel(
+    current: Float,
+    prev: Float,
+    colors: androidx.compose.material.Colors
+): Pair<String, androidx.compose.ui.graphics.Color> {
     if (prev <= 0f) return "" to colors.onSurface.copy(alpha = 0.6f)
     val change = ((current - prev) / kotlin.math.max(1e-6f, prev)) * 100f
     val arrow  = if (change >= 0) "↑" else "↓"
@@ -977,14 +1039,12 @@ private fun wowLabel(current: Float, prev: Float, colors: androidx.compose.mater
     return text to tint
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun wowLabel(current: Float, prev: Float): Pair<String, androidx.compose.ui.graphics.Color> {
-    return wowLabel(current, prev, androidx.compose.material.MaterialTheme.colors)
+    return wowLabel(current, prev, MaterialTheme.colors)
 }
 
-
 /* -------------------- Grid model -------------------- */
-
 private data class NavEntry(val screen: Screen, val title: String, val icon: ImageVector)
 
 @Preview(showBackground = true)

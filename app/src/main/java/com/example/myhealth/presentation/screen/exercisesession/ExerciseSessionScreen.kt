@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -23,26 +25,15 @@ import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.permission.HealthPermission
 import com.example.myhealth.data.ExerciseSession
 import com.example.myhealth.data.HealthConnectManager
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
-/**
- * Exercise hub with four tabs:
- * - Plan: weekly plan + start guided workout (Day bottom sheet -> Start guided)
- * - Workout: today's sessions
- * - Courses: curated routines
- * - Stats: weekly summary
- *
- * Guided and Summary are shown as fullscreen overlays above the tabs.
- *
- * CHANGES (non-destructive):
- * - BottomNavigation replaces top TabRow (original kept in comments).
- * - Stats tab reads this week's sessions from Health Connect (end-exclusive)
- *   and merges them with today's Workout data & Plan completion.
- * - New: when starting Guided from a Plan day (e.g., open Wednesday on Saturday),
- *   we compute the real LocalDate for that Plan day from its title (Mon..Sun),
- *   store it in targetPlanDate, and write back to THAT date on summary save.
- * - If all guided items are DONE, mark the whole day's plan tasks completed
- *   so your "Completed" badge shows immediately.
- */
+
 @Composable
 fun ExerciseSessionScreen(
     modifier: Modifier = Modifier,
@@ -131,132 +122,153 @@ fun ExerciseSessionScreen(
 
         // ---------- BASE CONTENT WITH BOTTOM NAV ----------
         Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colors.background)
+                .statusBarsPadding()
+                .navigationBarsPadding(),
             bottomBar = {
-                // BottomNavigation mirrors your former tabs
                 BottomNavigation {
                     ExerciseTab.values().forEach { tab ->
+                        // Icon scale animation on selection
+                        val interaction = remember { MutableInteractionSource() }
+                        val scale by animateFloatAsState(
+                            targetValue = if (selectedTab == tab) 1.35f else 1f,
+                            label = "tab_scale"
+                        )
                         BottomNavigationItem(
                             selected = selectedTab == tab,
                             onClick = { selectedTab = tab },
-                            icon = { Icon(tab.icon, contentDescription = tab.title) },
-                            label = { Text(tab.title) }
+                            icon = {
+                                Icon(
+                                    tab.icon,
+                                    contentDescription = tab.title,
+                                    modifier = Modifier.graphicsLayer {
+                                        scaleX = scale
+                                        scaleY = scale
+                                    }
+                                )
+                            },
+                            label = { Text(tab.title) },
+                            selectedContentColor = MaterialTheme.colors.primary,
+                            unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                            alwaysShowLabel = true,
+                            interactionSource = interaction
                         )
                     }
                 }
             }
-        ) { padding ->
-            Column(Modifier.padding(padding)) {
+        ) { paddingValues ->
 
-                /* ---------- ORIGINAL TOP TABROW (kept for reference; no longer used) ----------
-                TabRow(selectedTabIndex = selectedTab.ordinal) {
-                    ExerciseTab.values().forEachIndexed { i, tab ->
-                        Tab(
-                            selected = i == selectedTab.ordinal,
-                            onClick = { selectedTab = tab },
-                            text = { Text(tab.title) },
-                            icon = { Icon(tab.icon, contentDescription = tab.title) }
-                        )
-                    }
-                }
-                ------------------------------------------------------------------------------ */
+            // IMPORTANT: no verticalScroll here – avoid nesting with LazyColumn inside tabs.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                // Smooth fade between tabs
+                Crossfade(
+                    targetState = selectedTab,
+                    animationSpec = androidx.compose.animation.core.tween(300),
+                    label = "tab_transition"
+                ) { tab ->
+                    when (tab) {
 
-                when (selectedTab) {
-                    ExerciseTab.Plan -> ExercisePlanScreen(
-                        modifier = Modifier.padding(16.dp),
-                        onStartDay = { day, ignoredDateFromPlanScreen ->
-                            // Map plan card title to a real date in this week, store for save.
-                            targetPlanDate = resolveDateFromPlanTitle(day.title)
-                            // Start guided workout using the selected plan day content.
-                            guidedVm.startFromPlan(day)
-                            showGuided = true
-                        }
-                    )
-                    ExerciseTab.Workout -> WorkoutPage(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        sessionsList = sessionsList,
-                        backgroundReadAvailable = backgroundReadAvailable,
-                        backgroundReadGranted = backgroundReadGranted,
-                        onRequestBgRead = {
-                            onPermissionsLaunch(
-                                setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND)
-                            )
-                        },
-                        onInsertClick = onInsertClick,
-                        onDetailsClick = onDetailsClick,
-                        onDeleteClick = onDeleteClick
-                    )
-
-                    ExerciseTab.Courses -> ExerciseCoursesScreen(Modifier.padding(16.dp))
-
-                    ExerciseTab.Stats -> {
-                        val zone = java.time.ZoneId.systemDefault()
-                        val today = java.time.LocalDate.now(zone)
-                        val weekStart = today.with(
-                            java.time.temporal.TemporalAdjusters.previousOrSame(
-                                java.time.DayOfWeek.MONDAY
-                            )
-                        )
-
-                        // --- Base = real sessions for the week ---
-                        val base: List<ExerciseSession> = if (statsSessions.isNotEmpty()) {
-                            statsSessions
-                        } else {
-                            sessionsList
-                        }
-
-                        // Group by date to know which days already have real sessions
-                        val baseByDate: Map<java.time.LocalDate, List<ExerciseSession>> =
-                            base.groupBy { it.startTime.toLocalDate() }
-
-                        // --- Plan-derived synthetic sessions ---
-                        // Only create synthetic when:
-                        //   1) that day has NO real sessions, AND
-                        //   2) plan has completed tasks for that day.
-                        val defaultPerTaskMinutes = 30 // fallback minutes per completed task
-
-                        val syntheticFromPlan: List<ExerciseSession> = (0..6).flatMap { d ->
-                            val date = weekStart.plusDays(d.toLong())
-
-                            // Skip if real sessions exist for the day
-                            if (!baseByDate[date].isNullOrEmpty()) return@flatMap emptyList<ExerciseSession>()
-
-                            val tasks = planStore.getTasks(date)
-                            val completed = tasks.filter { it.completed }
-
-                            val minutesFromTasks = if (completed.isNotEmpty()) {
-                                completed.size * defaultPerTaskMinutes
-                            } else 0
-
-                            if (minutesFromTasks > 0) {
-                                val start = date.atTime(12, 0).atZone(zone) // midday placeholder
-                                val end   = start.plusMinutes(minutesFromTasks.toLong())
-                                val title = (planStore.getDayTitle(date) ?: "").ifBlank { "Planned" }
-                                listOf(
-                                    ExerciseSession(
-                                        id = "plan-$date",
-                                        title = "$title (planned)",
-                                        startTime = start,
-                                        endTime = end,
-                                        sourceAppInfo = null
-                                    )
-                                )
-                            } else {
-                                emptyList()
+                        ExerciseTab.Plan -> ExercisePlanScreen(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                                .semantics { contentDescription = "Open Plan tab" },
+                            onStartDay = { day, _ ->
+                                // Map plan card title (Mon..Sun) to a real LocalDate in this week
+                                targetPlanDate = resolveDateFromPlanTitle(day.title)
+                                guidedVm.startFromPlan(day)
+                                showGuided = true
                             }
-                        }
-
-                        // ---- Merge & sort: real + (only-missing-days) planned ----
-                        val merged = (base + syntheticFromPlan).sortedBy { it.startTime }
-
-                        ExerciseStatsScreen(
-                            modifier = Modifier.padding(16.dp),
-                            sessions = merged
                         )
-                    }
 
+                        // DO NOT wrap WorkoutPage with verticalScroll (it uses Lazy lists inside)
+                        ExerciseTab.Workout -> WorkoutPage(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                                .semantics { contentDescription = "Open Workout tab" },
+                            sessionsList = sessionsList,
+                            backgroundReadAvailable = backgroundReadAvailable,
+                            backgroundReadGranted = backgroundReadGranted,
+                            onRequestBgRead = {
+                                onPermissionsLaunch(
+                                    setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND)
+                                )
+                            },
+                            onInsertClick = onInsertClick,
+                            onDetailsClick = onDetailsClick,
+                            onDeleteClick = onDeleteClick
+                        )
+
+                        ExerciseTab.Courses -> ExerciseCoursesScreen(
+                            Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                                .semantics { contentDescription = "Open Courses tab" }
+                        )
+
+                        ExerciseTab.Stats -> {
+                            val zone = java.time.ZoneId.systemDefault()
+                            val today = java.time.LocalDate.now(zone)
+                            val weekStart = today.with(
+                                java.time.temporal.TemporalAdjusters.previousOrSame(
+                                    java.time.DayOfWeek.MONDAY
+                                )
+                            )
+
+                            // Base = real sessions of this week
+                            val base: List<ExerciseSession> =
+                                if (statsSessions.isNotEmpty()) statsSessions else sessionsList
+
+                            val baseByDate = base.groupBy { it.startTime.toLocalDate() }
+                            val defaultPerTaskMinutes = 30
+
+                            // Make synthetic sessions from completed Plan tasks on days without real sessions
+                            val syntheticFromPlan: List<ExerciseSession> = (0..6).flatMap { d ->
+                                val date = weekStart.plusDays(d.toLong())
+                                if (!baseByDate[date].isNullOrEmpty()) return@flatMap emptyList()
+
+                                val tasks = planStore.getTasks(date)
+                                val completed = tasks.filter { it.completed }
+                                val minutesFromTasks = completed.size * defaultPerTaskMinutes
+
+                                if (minutesFromTasks > 0) {
+                                    val start = date.atTime(12, 0).atZone(zone)
+                                    val end = start.plusMinutes(minutesFromTasks.toLong())
+                                    val title = (planStore.getDayTitle(date) ?: "").ifBlank { "Planned" }
+                                    listOf(
+                                        ExerciseSession(
+                                            id = "plan-$date",
+                                            title = "$title (planned)",
+                                            startTime = start,
+                                            endTime = end,
+                                            sourceAppInfo = null
+                                        )
+                                    )
+                                } else emptyList()
+                            }
+
+                            val merged = (base + syntheticFromPlan).sortedBy { it.startTime }
+
+                            ExerciseStatsScreen(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp)
+                                    .semantics { contentDescription = "Open Stats tab" },
+                                sessions = merged
+                            )
+                        }
+                    }
                 }
             }
         }
+
 
         // ---------- FULLSCREEN OVERLAYS ----------
 

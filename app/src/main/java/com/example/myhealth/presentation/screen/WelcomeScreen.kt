@@ -64,7 +64,18 @@ import com.example.myhealth.presentation.navigation.Screen
 import com.example.myhealth.presentation.theme.HealthConnectTheme
 import kotlin.math.max
 import kotlin.math.min
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
 
+
+private object Dimens {
+    val screenH = 16.dp
+    val screenV = 12.dp
+    val cardRadius = 18.dp
+    val gridItemHeight = 108.dp
+    val gridHGap = 12.dp
+    val gridVGap = 12.dp
+}
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WelcomeScreen(
@@ -173,22 +184,31 @@ fun WelcomeScreen(
         }
 
         // ---------- Permission banners ----------
-        if (!hasAllPermissions) {
-            PermissionBanner(
-                text = "Some permissions are missing. Grant permissions to unlock auto-tracking.",
-                actionText = "Grant permissions",
-                icon = Icons.Filled.Error,
-                onClick = { navController.navigate(Screen.SettingsScreen.route) }
-            )
-            Spacer(Modifier.height(8.dp))
-        }
-        if (!hasBackgroundReadPermission) {
-            PermissionBanner(
-                text = "Background read is off. Enable to keep data up to date.",
-                actionText = "Enable background read",
-                onClick = { navController.navigate(Screen.SettingsScreen.route) }
-            )
-            Spacer(Modifier.height(4.dp))
+        Column(Modifier.padding(horizontal = Dimens.screenH)) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !hasAllPermissions,
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+                exit  = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
+            ) {
+                PermissionBanner(
+                    text = "Some permissions are missing. Grant permissions to unlock auto-tracking.",
+                    actionText = "Grant permissions",
+                    icon = Icons.Filled.Error
+                ) { navController.navigate(Screen.SettingsScreen.route) }
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !hasBackgroundReadPermission,
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+                exit  = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
+            ) {
+                PermissionBanner(
+                    text = "Background read is off. Enable to keep data up to date.",
+                    actionText = "Enable background read"
+                ) { navController.navigate(Screen.SettingsScreen.route) }
+            }
         }
 
         // ---------- Reminder ----------
@@ -293,29 +313,45 @@ fun WelcomeScreen(
 
         // --- Feature grid ---
         LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
+            columns = GridCells.Fixed(3),
             userScrollEnabled = false,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(gridHeight),
-            verticalArrangement = Arrangement.spacedBy(vSpacing.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+            verticalArrangement = Arrangement.spacedBy(Dimens.gridVGap),
+            horizontalArrangement = Arrangement.spacedBy(Dimens.gridHGap),
+            contentPadding = PaddingValues(horizontal = Dimens.screenH, vertical = 6.dp)
         ) {
-            items(
-                count = entries.size,
-                key = { index -> entries[index].title }
-            ) { index ->
+            items(entries.size, key = { entries[it].title }) { index ->
                 val e = entries[index]
                 val tint = accentFor(index)
-                FeatureCard(
-                    icon = e.icon,
-                    title = e.title,
-                    tint = tint,
-                    onClick = { navController.navigate(e.screen.route) }
-                )
+
+                val appearDelay = index * 40
+                val alpha = remember { androidx.compose.animation.core.Animatable(0f) }
+                val transY = remember { androidx.compose.animation.core.Animatable(12f) }
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(appearDelay.toLong())
+                    alpha.animateTo(1f, animationSpec = androidx.compose.animation.core.tween(220))
+                    transY.animateTo(0f, animationSpec = androidx.compose.animation.core.tween(220))
+                }
+
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            this.alpha = alpha.value
+                            translationY = transY.value
+                        }
+                ) {
+                    FeatureCard(
+                        icon = e.icon,
+                        title = e.title,
+                        tint = tint,
+                        onClick = { navController.navigate(e.screen.route) }
+                    )
+                }
             }
         }
+
 
         Spacer(Modifier.height(8.dp))
 
@@ -494,29 +530,17 @@ private fun FeatureCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(targetValue = if (pressed) 0.98f else 1f, label = "card-scale")
-
-    val isSingleWord = !title.contains(' ')
-    var fontSize by remember(title) { mutableStateOf(if (isSingleWord) 14.sp else 13.sp) }
-    val minFont = if (isSingleWord) 11.sp else 12.sp
+    val scale by animateFloatAsState(if (pressed) 0.98f else 1f, label = "card-scale")
+    val elev by animateFloatAsState(if (pressed) 2f else 4f, label = "card-elev")
 
     Card(
-        elevation = if (pressed) 2.dp else 4.dp,
-        shape = RoundedCornerShape(18.dp),
+        elevation = elev.dp,
+        shape = RoundedCornerShape(Dimens.cardRadius),
         backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
-            .height(108.dp)
+            .height(Dimens.gridItemHeight)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick
-            )
-            .semantics {
-                role = Role.Button
-                contentDescription = title
-            }
-            .testTag("feature_$title")
+            .clickable(interactionSource = interaction, indication = null) { onClick() }
     ) {
         Column(
             Modifier
@@ -533,29 +557,23 @@ private fun FeatureCard(
             ) {
                 Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
             }
-
             Spacer(Modifier.height(8.dp))
-
             Text(
                 text = title,
                 color = MaterialTheme.colors.onSurface,
                 textAlign = TextAlign.Center,
                 lineHeight = 15.sp,
-                maxLines = if (isSingleWord) 1 else 2,
+                maxLines = if (' ' in title) 2 else 1,
                 overflow = TextOverflow.Clip,
-                fontSize = fontSize,
+                fontSize = if (' ' in title) 13.sp else 14.sp,
                 modifier = Modifier
                     .padding(horizontal = 4.dp)
-                    .fillMaxWidth(),
-                onTextLayout = { layout ->
-                    if (isSingleWord && layout.hasVisualOverflow && fontSize > minFont) {
-                        fontSize = TextUnit(fontSize.value - 1f, fontSize.type)
-                    }
-                }
+                    .fillMaxWidth()
             )
         }
     }
 }
+
 
 /** Per-index accent color so cards look less uniform. */
 private fun accentFor(index: Int): Color {
@@ -685,11 +703,12 @@ private fun ReminderCard(
 ) {
     Card(
         elevation = 4.dp,
+        shape = RoundedCornerShape(Dimens.cardRadius),
         backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = Dimens.screenH, vertical = 8.dp)
             .fillMaxWidth()
-            .semantics { contentDescription = "Reminder: $text" }
+            .animateContentSize()
     ) {
         Column(Modifier.padding(12.dp)) {
             Text(text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
@@ -701,6 +720,7 @@ private fun ReminderCard(
         }
     }
 }
+
 
 /* -------------------- Streak & Badge -------------------- */
 
@@ -998,16 +1018,12 @@ private fun PermissionBanner(
 ) {
     Card(
         elevation = 2.dp,
+        shape = RoundedCornerShape(Dimens.cardRadius),
         backgroundColor = MaterialTheme.colors.surface,
         modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 6.dp)
             .fillMaxWidth()
             .height(60.dp)
             .clickable { onClick() }
-            .semantics {
-                role = Role.Button
-                contentDescription = "$text. Action: $actionText"
-            }
     ) {
         Row(
             Modifier
@@ -1015,18 +1031,15 @@ private fun PermissionBanner(
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = text,
-                tint = MaterialTheme.colors.primary
-            )
+            Icon(icon, contentDescription = text, tint = MaterialTheme.colors.primary)
             Spacer(Modifier.width(10.dp))
-            Text(text = text, modifier = Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colors.onSurface)
+            Text(text, modifier = Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colors.onSurface)
             Spacer(Modifier.width(8.dp))
             Text(actionText, color = MaterialTheme.colors.primary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
     }
 }
+
 
 /* -------------------- WoW label helper -------------------- */
 private fun wowLabel(

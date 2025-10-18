@@ -1,13 +1,12 @@
 package com.example.myhealth.presentation.screen.mind
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,13 +19,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * MindStateScreen
- * - Full-width pastel sections, soft colors.
- * - "7-day trend (rolling)" with wider bars & spacing.
+ * State/Insights screen using theme colors.
  */
 @Composable
 fun MindStateScreen(
-    onBack: () -> Unit = {},
     vm: MindViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
             LocalContext.current.applicationContext as Application
@@ -34,7 +30,7 @@ fun MindStateScreen(
     )
 ) {
     val todayMinutes by vm.todayMinutes.collectAsState()
-    val weekly by vm.weeklyMinutes.collectAsState()     // rolling last 7 days (D-6..D)
+    val weekly by vm.weeklyMinutes.collectAsState()
     val streak by vm.streakDays.collectAsState()
     val moodDist by vm.moodDistribution.collectAsState()
 
@@ -51,7 +47,8 @@ fun MindStateScreen(
     val cInsights = MaterialTheme.colors.primary.copy(alpha = 0.05f)
 
     Scaffold(
-        backgroundColor = Color.White
+
+        backgroundColor = MaterialTheme.colors.background
     ) { inner ->
         Column(
             Modifier
@@ -73,7 +70,6 @@ fun MindStateScreen(
             }
 
             Section(title = "7-day trend (rolling)", containerColor = cTrend) {
-                // Custom mini bar chart with controllable spacing/width/height
                 val barWidth = 24.dp
                 val spacing = 12.dp
                 val chartHeight = 160.dp
@@ -97,32 +93,31 @@ fun MindStateScreen(
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Week over week: ${if (wow >= 0) "+" else ""}$wow%",
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.75f))
+                Text(
+                    "Week over week: ${if (wow >= 0) "+" else ""}$wow%",
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.75f)
+                )
             }
 
             Section(title = "Mood distribution (7d)", containerColor = cMood) {
                 val total = moodDist.values.sum().coerceAtLeast(1)
-
-                // Sort by count desc so the most frequent mood is on top (optional)
                 val ordered = moodDist.entries.sortedByDescending { it.value }
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     ordered.forEach { (mood, cnt) ->
-                        val frac = cnt.toFloat() / total.toFloat()         // 0f..1f
+                        val frac = cnt.toFloat() / total.toFloat()
                         val pctText = "${(frac * 100).toInt()}%"
 
                         MoodBarRow(
                             emoji = mood.glyph,
                             label = mood.label,
                             fraction = frac,
-                            barColor = mood.tint,                            // use mood color
+                            barColor = mood.tint,
                             valueText = pctText
                         )
                     }
                 }
             }
-
 
             Section(title = "Insights & Suggestions", containerColor = cInsights) {
                 Text("• Weekdays look stronger; try short 3-min sessions on weekends.")
@@ -133,7 +128,7 @@ fun MindStateScreen(
     }
 }
 
-/* ------------------------------ Building blocks ------------------------------ */
+/* ---------- local building blocks (kept here to avoid visibility issues) ---------- */
 
 @Composable
 private fun Section(
@@ -146,7 +141,7 @@ private fun Section(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(title, style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.Bold))
+            Text(title, style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.Bold)
             content()
         }
     }
@@ -162,21 +157,16 @@ private fun InfoLine(label: String, value: String) {
         Text(value, fontWeight = FontWeight.SemiBold)
     }
 }
-/**
- * A single horizontal bar row:
- * [emoji] [label]  |██████████.....|  [valueText]
- * The bar width is proportional to [fraction] (0f..1f).
- */
+
 @Composable
-private fun MoodBarRow(
+fun MoodBarRow(
     emoji: String,
     label: String,
-    fraction: Float,
+    fraction: Float,         // 0f..1f
     barColor: Color,
     valueText: String
 ) {
     Column(Modifier.fillMaxWidth()) {
-        // Header line: 😀 Happy        42%
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -188,10 +178,7 @@ private fun MoodBarRow(
             }
             Text(valueText, fontWeight = FontWeight.SemiBold)
         }
-
         Spacer(Modifier.height(6.dp))
-
-        // Track + Fill bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -202,19 +189,17 @@ private fun MoodBarRow(
             if (fraction > 0f) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(fraction.coerceIn(0f, 1f))  // proportional width
+                        .fillMaxWidth(fraction.coerceIn(0f, 1f))
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(6.dp))
-                        .background(barColor.copy(alpha = 0.85f)) // vivid bar
+                        .background(barColor.copy(alpha = 0.85f))
                 )
             }
         }
     }
 }
 
-/* ------------------------------ Helpers ------------------------------ */
-
-/** week-over-week % comparing last two values in the 7d window. */
+/** week-over-week % comparing last two values. */
 private fun weekOverWeekPct(weekly: List<Int>): Int {
     if (weekly.size < 2) return 0
     val last = weekly.last()

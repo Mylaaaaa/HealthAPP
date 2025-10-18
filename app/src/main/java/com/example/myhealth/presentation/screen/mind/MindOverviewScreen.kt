@@ -1,6 +1,5 @@
 package com.example.myhealth.presentation.screen.mind
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+
 import android.app.Application
 import android.app.DatePickerDialog
 import androidx.compose.foundation.background
@@ -8,10 +7,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.runtime.*
@@ -19,7 +19,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,11 +26,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
 import java.time.format.TextStyle
-import java.util.Locale
 import java.util.Calendar
+import java.util.Locale
 
 /**
- * MindOverviewScreen — Enhanced Plan B (real Recent moods)
+ * Overview screen with theme-aware colors (no hard-coded white/gray).
  */
 @Composable
 fun MindOverviewScreen(
@@ -45,12 +44,10 @@ fun MindOverviewScreen(
 ) {
     val ctx = LocalContext.current
 
-    // Reactive states
     val selectedDate by vm.today.collectAsState()
     val todayMinutes by vm.todayMinutes.collectAsState()
     val weekly by vm.weeklyMinutes.collectAsState()
     val streak by vm.streakDays.collectAsState()
-    val reminder by vm.reminderEnabled.collectAsState()
     val moodToday by vm.lastMood.collectAsState()
     val recent by vm.recentMoods3.collectAsState()
 
@@ -85,15 +82,19 @@ fun MindOverviewScreen(
                 title = { /* no title */ },
                 actions = {
                     IconButton(onClick = ::openDatePicker) {
-                        Icon(Icons.Filled.Event, contentDescription = "Select date")
+                        Icon(
+                            imageVector = Icons.Filled.Event,
+                            contentDescription = "Select date",
+                            tint = MaterialTheme.colors.onSurface
+                        )
                     }
                 },
-                backgroundColor = Color.White,
+                backgroundColor = MaterialTheme.colors.surface,
+                contentColor = MaterialTheme.colors.onSurface,
                 elevation = 0.dp
             )
         },
-
-        backgroundColor = Color.White
+        backgroundColor = MaterialTheme.colors.background
     ) { inner ->
         Column(
             Modifier
@@ -102,7 +103,6 @@ fun MindOverviewScreen(
                 .padding(inner)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
-
         ) {
             // Today summary
             Card(elevation = 4.dp) {
@@ -115,13 +115,20 @@ fun MindOverviewScreen(
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Today", style = MaterialTheme.typography.subtitle1)
-                            Text("$todayMinutes / $dailyGoal min", color = Color.Gray)
+                            Text(
+                                "$todayMinutes / $dailyGoal min",
+                                color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
+                            )
                             Spacer(Modifier.height(6.dp))
-                            Text(motivation, color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f))
+                            Text(
+                                motivation,
+                                color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f)
+                            )
                         }
                         if (remaining > 0) {
                             Box(
-                                modifier = Modifier.clip(RoundedCornerShape(16.dp))
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
                                     .background(MaterialTheme.colors.primary.copy(alpha = 0.10f))
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) { Text("Remaining $remaining", color = MaterialTheme.colors.primary) }
@@ -137,7 +144,11 @@ fun MindOverviewScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Quick start", style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f))
+                    Text(
+                        "Quick start",
+                        style = MaterialTheme.typography.subtitle1,
+                        modifier = Modifier.weight(1f)
+                    )
                     OutlinedButton(onClick = {
                         onOpenSession("Box Breathing", 3, selectedDate, "breathing", true)
                     }) { Text("3 min") }
@@ -147,20 +158,24 @@ fun MindOverviewScreen(
             // Quick actions
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 QuickActionCard(
-                    title = "Breathing", subtitle = "1–3 min",
-                    icon = Icons.Filled.Psychology, tint = MaterialTheme.colors.primary,
+                    title = "Breathing",
+                    subtitle = "1–3 min",
+                    icon = Icons.Filled.Psychology,
+                    tint = MaterialTheme.colors.primary,
                     onClick = { onOpenSession("Box Breathing", 3, selectedDate, "breathing", true) },
                     modifier = Modifier.weight(1f)
                 )
                 QuickActionCard(
-                    title = "Mood", subtitle = moodToday?.label ?: "check-in",
-                    icon = Icons.Filled.Psychology, tint = Color(0xFF26C6DA),
+                    title = "Mood",
+                    subtitle = moodToday?.label ?: "check-in",
+                    icon = Icons.Filled.Psychology,
+                    tint = MaterialTheme.colors.secondary,
                     onClick = { vm.checkInMood(Mood.GOOD) },
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            // Mood check-in row
+            // Mood check-in
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Mood check-in", style = MaterialTheme.typography.subtitle1)
@@ -172,19 +187,31 @@ fun MindOverviewScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(14.dp))
-                                    .background(if (selected) m.tint.copy(alpha = 0.14f) else MaterialTheme.colors.surface)
+                                    .background(
+                                        if (selected)
+                                            m.tint.copy(alpha = 0.14f)
+                                        else
+                                            MaterialTheme.colors.surface
+                                    )
                                     .clickable { vm.checkInMood(m) }
                                     .padding(horizontal = 12.dp, vertical = 8.dp)
                             ) {
-                                Text(m.glyph); Spacer(Modifier.height(2.dp))
-                                Text(m.label, color = if (selected) m.tint else MaterialTheme.colors.onSurface.copy(alpha = 0.7f))
+                                Text(m.glyph)
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    m.label,
+                                    color = if (selected)
+                                        m.tint
+                                    else
+                                        MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // Recent moods — real data
+            // Recent moods
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Recent moods", style = MaterialTheme.typography.subtitle1)
@@ -192,26 +219,32 @@ fun MindOverviewScreen(
                         recent.forEach { (date, mood) ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(
-                                    modifier = Modifier.size(26.dp).clip(RoundedCornerShape(8.dp))
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .clip(RoundedCornerShape(8.dp))
                                         .background(MaterialTheme.colors.primary.copy(alpha = 0.08f)),
                                     contentAlignment = Alignment.Center
                                 ) { Text(mood?.glyph ?: "—") }
                                 Spacer(Modifier.height(4.dp))
-                                Text(weekdayShort(date), color = Color.Gray)
+                                Text(
+                                    weekdayShort(date),
+                                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
+                                )
                             }
                         }
                     }
-                    Text("Tip: logging mood daily improves insights.",
+                    Text(
+                        "Tip: logging mood daily improves insights.",
                         style = MaterialTheme.typography.body2,
                         color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
                     )
                 }
             }
 
-            // Guided sessions (open config dialog)
+            // Guided sessions
             val sessions = listOf(
-                MindSession("s1", "Box Breathing", 3, "focus", Color(0xFF26C6DA)),
-                MindSession("s2", "Body Scan", 5, "relax", Color(0xFF7C4DFF))
+                MindSession("s1", "Box Breathing", 3, "focus", MaterialTheme.colors.secondary),
+                MindSession("s2", "Body Scan", 5, "relax", MaterialTheme.colors.primary)
             )
             Card(elevation = 4.dp) {
                 Column(Modifier.padding(12.dp)) {
@@ -249,8 +282,6 @@ fun MindOverviewScreen(
     }
 }
 
-/* ------------------------------ Dialog & helpers ------------------------------ */
-
 private data class GuidedConfigDialogState(val title: String, val minutes: Int, val tag: String)
 
 @Composable
@@ -267,7 +298,10 @@ private fun GuidedConfigDialog(
         title = { Text(state.title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("A focused, guided practice. Choose your duration:", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "A focused, guided practice. Choose your duration:",
+                    fontWeight = FontWeight.SemiBold
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DurationChip(current = mins, value = 3) { mins = 3 }
                     DurationChip(current = mins, value = 5) { mins = 5 }
@@ -283,9 +317,10 @@ private fun GuidedConfigDialog(
 
 @Composable
 private fun DurationChip(current: Int, value: Int, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, border = if (current == value) ButtonDefaults.outlinedBorder else null) {
-        Text("$value min")
-    }
+    OutlinedButton(
+        onClick = onClick,
+        border = if (current == value) ButtonDefaults.outlinedBorder else null
+    ) { Text("$value min") }
 }
 
 private fun Int.coerceIn(choices: List<Int>) = if (this in choices) this else choices.first()

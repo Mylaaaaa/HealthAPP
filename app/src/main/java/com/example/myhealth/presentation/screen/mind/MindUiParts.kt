@@ -3,18 +3,7 @@ package com.example.myhealth.presentation.screen.mind
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Card
@@ -38,26 +27,18 @@ import kotlin.math.min
 
 @Composable
 fun Ring(progress: Float, size: Dp, stroke: Dp, tint: Color) {
-    val surfaceColor = MaterialTheme.colors.onSurface.copy(alpha = 0.12f)
-
+    val surfaceTrack = MaterialTheme.colors.onSurface.copy(alpha = 0.12f)
     Canvas(modifier = Modifier.size(size)) {
         drawArc(
-            color = surfaceColor,
-            startAngle = -90f,
-            sweepAngle = 360f,
-            useCenter = false,
+            color = surfaceTrack, startAngle = -90f, sweepAngle = 360f, useCenter = false,
             style = Stroke(width = stroke.toPx(), cap = StrokeCap.Round)
         )
         drawArc(
-            color = tint,
-            startAngle = -90f,
-            sweepAngle = 360f * progress,
-            useCenter = false,
+            color = tint, startAngle = -90f, sweepAngle = 360f * progress, useCenter = false,
             style = Stroke(width = stroke.toPx(), cap = StrokeCap.Round)
         )
     }
 }
-
 
 @Composable
 fun QuickActionCard(
@@ -75,36 +56,23 @@ fun QuickActionCard(
             .clickable { onClick() }
     ) {
         Row(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
+            Modifier.fillMaxSize().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(tint.copy(alpha = 0.15f)),
+                Modifier.size(40.dp).clip(CircleShape).background(tint.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = tint)
-            }
+            ) { Icon(icon, contentDescription = null, tint = tint) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(title)
+                Text(title, color = MaterialTheme.colors.onSurface)
                 Text(subtitle, color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
             }
         }
     }
 }
 
-data class MindSession(
-    val id: String,
-    val title: String,
-    val mins: Int,
-    val tag: String,
-    val accent: Color
-)
+data class MindSession(val id: String, val title: String, val mins: Int, val tag: String, val accent: Color)
 
 @Composable
 fun GuidedChip(s: MindSession, onStart: (MindSession) -> Unit) {
@@ -118,21 +86,13 @@ fun GuidedChip(s: MindSession, onStart: (MindSession) -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(s.accent.copy(alpha = 0.16f)),
+                modifier = Modifier.size(36.dp).clip(CircleShape).background(s.accent.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.PlayArrow, null, tint = s.accent)
-            }
+            ) { Icon(Icons.Filled.PlayArrow, null, tint = s.accent) }
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(s.title)
-                Text(
-                    "${s.mins} min • ${s.tag}",
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
-                )
+                Text(s.title, color = MaterialTheme.colors.onSurface)
+                Text("${s.mins} min • ${s.tag}", color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
             }
         }
     }
@@ -142,9 +102,7 @@ fun GuidedChip(s: MindSession, onStart: (MindSession) -> Unit) {
 fun BarMiniChart(values: List<Float>, maxHeight: Dp = 80.dp) {
     val maxV = max(10f, values.maxOrNull() ?: 10f)
     Row(
-        Modifier
-            .fillMaxWidth()
-            .height(maxHeight),
+        Modifier.fillMaxWidth().height(maxHeight),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {

@@ -8,9 +8,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -18,9 +16,7 @@ import kotlinx.coroutines.delay
 import java.time.LocalDate
 
 /**
- * MindSessionTimerScreen
- * - Saves to the provided [dateIso] (keeps Overview/State in sync).
- * - Supports autoStart for one-tap quick actions.
+ * Timer screen that saves to the provided date.
  */
 @Composable
 fun MindSessionTimerScreen(
@@ -55,17 +51,17 @@ fun MindSessionTimerScreen(
             TopAppBar(
                 title = { Text(title) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
-                backgroundColor = Color.White, elevation = 0.dp
+                backgroundColor = MaterialTheme.colors.surface, contentColor = MaterialTheme.colors.onSurface, elevation = 0.dp
             )
         },
-        backgroundColor = Color.White
+        backgroundColor = MaterialTheme.colors.background
     ) { inner ->
         Column(
             Modifier.fillMaxSize().padding(inner).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text("Guided Timer", style = MaterialTheme.typography.h6.copy(fontWeight = FontWeight.Bold))
+            Text("Guided Timer", style = MaterialTheme.typography.h6)
             Text(timeText, style = MaterialTheme.typography.h3, color = MaterialTheme.colors.primary)
 
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -78,8 +74,8 @@ fun MindSessionTimerScreen(
             Button(
                 onClick = {
                     val date = runCatching { LocalDate.parse(dateIso) }.getOrElse { LocalDate.now() }
-                    vm.setDate(date)               // ensure VM date matches the save date
-                    vm.addSession(minutes, tag)    // write record for that date
+                    vm.setDate(date)
+                    vm.addSession(minutes, tag)
                     onBack()
                 },
                 enabled = !running || secondsLeft == 0

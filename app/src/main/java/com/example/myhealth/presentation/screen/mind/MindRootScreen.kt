@@ -9,7 +9,6 @@ import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -24,8 +23,8 @@ import java.nio.charset.StandardCharsets
 import java.time.LocalDate
 
 /**
- * MindRootScreen
- * - Hoists ONE shared MindViewModel for all child screens.
+ * Root container for Mindfulness module.
+ * Theme-aware: uses MaterialTheme colors (no hard-coded colors).
  */
 @Composable
 fun MindRootScreen() {
@@ -33,12 +32,16 @@ fun MindRootScreen() {
     val current by nav.currentBackStackEntryAsState()
 
     val app = LocalContext.current.applicationContext as Application
-    val vm: MindViewModel = viewModel(factory = ViewModelProvider.AndroidViewModelFactory.getInstance(app))
+    val vm: MindViewModel =
+        viewModel(factory = ViewModelProvider.AndroidViewModelFactory.getInstance(app))
 
     Scaffold(
-        backgroundColor = Color.White,
+        backgroundColor = MaterialTheme.colors.background,
         bottomBar = {
-            BottomNavigation(backgroundColor = MaterialTheme.colors.primary) {
+            BottomNavigation(
+                backgroundColor = MaterialTheme.colors.surface,
+                contentColor = MaterialTheme.colors.onSurface
+            ) {
                 BottomNavigationItem(
                     selected = current?.destination?.route == "mind_overview",
                     onClick = {
@@ -49,27 +52,32 @@ fun MindRootScreen() {
                     },
                     icon = { Icon(Icons.Filled.Psychology, contentDescription = "Overview") },
                     label = { Text("Overview") },
-                    selectedContentColor = Color.White,
-                    unselectedContentColor = Color.White.copy(alpha = 0.6f)
+                    selectedContentColor = MaterialTheme.colors.primary,
+                    unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
                 )
                 BottomNavigationItem(
                     selected = current?.destination?.route == "mind_state",
                     onClick = { nav.navigate("mind_state") { launchSingleTop = true } },
                     icon = { Icon(Icons.Filled.Timeline, contentDescription = "State") },
                     label = { Text("State") },
-                    selectedContentColor = Color.White,
-                    unselectedContentColor = Color.White.copy(alpha = 0.6f)
+                    selectedContentColor = MaterialTheme.colors.primary,
+                    unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
                 )
             }
         }
     ) { inner ->
-        NavHost(navController = nav, startDestination = "mind_overview", modifier = Modifier.padding(inner)) {
+        NavHost(
+            navController = nav,
+            startDestination = "mind_overview",
+            modifier = Modifier.padding(inner)
+        ) {
             composable("mind_overview") {
                 MindOverviewScreen(
                     onBack = { nav.popBackStack() },
                     onOpenSession = { title, mins, date, tag, auto ->
-                        val encodedTitle = URLEncoder.encode(title, StandardCharsets.UTF_8.name())
-                        nav.navigate("mind_session_timer?title=$encodedTitle&mins=$mins&date=${date}&tag=$tag&auto=$auto")
+                        val encodedTitle =
+                            URLEncoder.encode(title, StandardCharsets.UTF_8.name())
+                        nav.navigate("mind_session_timer?title=$encodedTitle&mins=$mins&date=$date&tag=$tag&auto=$auto")
                     },
                     vm = vm
                 )

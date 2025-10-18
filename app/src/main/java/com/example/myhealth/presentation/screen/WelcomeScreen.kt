@@ -1,4 +1,3 @@
-// file: app/src/main/java/com/example/myhealth/presentation/screen/WelcomeScreen.kt
 package com.example.myhealth.presentation.screen
 
 import androidx.compose.material.TextButton
@@ -60,16 +59,10 @@ import com.example.myhealth.presentation.navigation.Screen
 import com.example.myhealth.presentation.theme.HealthConnectTheme
 import kotlin.math.max
 import kotlin.math.min
+import androidx.compose.material.Colors
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 
-/**
- * Home screen rendering from HomeUiState (Material 2).
- *
- * Design goals:
- * - A single, clear CTA row at the top (Start Exercise / Record Weight).
- * - Reminder card uses "View plan" to avoid duplicating "Start Exercise".
- * - 4-column feature grid with lively but subtle press feedback (no deprecated ripple).
- * - Compact two-line titles and soft icon accents improve readability.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WelcomeScreen(
@@ -103,6 +96,8 @@ fun WelcomeScreen(
         Modifier
             .fillMaxSize()
             .background(colors.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
     ) {
 
@@ -130,7 +125,7 @@ fun WelcomeScreen(
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = "👋 Hi, $displayName",
-                        color = Color.White,
+                        color = colors.onPrimary,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -311,21 +306,21 @@ fun WelcomeScreen(
                 label = "Steps",
                 valueLabel = "$steps / $stepGoal",
                 ratio = safeRatio(steps.toFloat(), stepGoal.toFloat()),
-                tint = Color(0xFF4C6FFF),
+                tint = MaterialTheme.colors.primary,
                 modifier = Modifier.weight(1f)
             )
             GoalRingCard(
                 label = "Active min",
                 valueLabel = "$activeMinToday / $activeMinGoal",
                 ratio = safeRatio(activeMinToday.toFloat(), activeMinGoal.toFloat()),
-                tint = Color(0xFFFF7043),
+                tint = MaterialTheme.colors.secondary,
                 modifier = Modifier.weight(1f)
             )
             GoalRingCard(
                 label = "Sleep",
                 valueLabel = "${String.format(java.util.Locale.US, "%.1f", sleepTodayHours)} / ${String.format(java.util.Locale.US, "%.1f", sleepGoalHours)} h",
                 ratio = safeRatio(sleepTodayHours.toFloat(), sleepGoalHours.toFloat()),
-                tint = Color(0xFF7C4DFF),
+                tint = MaterialTheme.colors.primary.copy(alpha = 0.85f),
                 modifier = Modifier.weight(1f)
             )
         }
@@ -778,10 +773,11 @@ private fun GoalRingCard(
 
 @Composable
 private fun RingProgress(progress: Float, size: Dp, strokeWidth: Dp, tint: Color) {
+    val track = MaterialTheme.colors.onSurface.copy(alpha = 0.12f)
     androidx.compose.foundation.Canvas(modifier = Modifier.size(size)) {
         val sweep = 360f * progress
         drawArc(
-            color = Color(0xFFEAEAEA),
+            color = track,
             startAngle = -90f,
             sweepAngle = 360f,
             useCenter = false,
@@ -839,7 +835,7 @@ private fun HealthTipCard(
             // Action text ("Learn more") – keep blue for consistent accent
             Text(
                 actionText,
-                color = Color(0xFF4C6FFF),
+                color = MaterialTheme.colors.primary,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp
             )
@@ -896,13 +892,21 @@ private fun RecentActivitySection(
                     .clickable { onItemClick(item.icon) }
             ) {
                 Row(
-                    Modifier
+                    modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = 12.dp)
+                        .semantics {
+                            contentDescription = "${item.title}: ${item.time}".trim()
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Use primary for icon tint to keep brand accent
-                    Icon(item.icon, null, tint = colors.primary) // was fixed blue
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = item.title,
+                        tint = colors.primary
+                    )
+
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         // Title uses onSurface for proper contrast
@@ -950,7 +954,11 @@ private fun PermissionBanner(
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, null, tint = MaterialTheme.colors.primary)
+            Icon(
+                imageVector = icon,
+                contentDescription = text,
+                tint = MaterialTheme.colors.primary
+            )
             Spacer(Modifier.width(10.dp))
             Text(text = text, modifier = Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colors.onSurface)
             Spacer(Modifier.width(8.dp))
@@ -960,15 +968,20 @@ private fun PermissionBanner(
 }
 
 /* -------------------- WoW label helper -------------------- */
-
-private fun wowLabel(current: Float, prev: Float): Pair<String, Color> {
-    if (prev <= 0f) return "" to Color.Gray
-    val change = ((current - prev) / prev) * 100f
-    val arrow = if (change >= 0) "↑" else "↓"
-    val color = if (change >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
-    val text = String.format(java.util.Locale.US, "%s %.0f%%", arrow, kotlin.math.abs(change))
-    return text to color
+private fun wowLabel(current: Float, prev: Float, colors: androidx.compose.material.Colors): Pair<String, androidx.compose.ui.graphics.Color> {
+    if (prev <= 0f) return "" to colors.onSurface.copy(alpha = 0.6f)
+    val change = ((current - prev) / kotlin.math.max(1e-6f, prev)) * 100f
+    val arrow  = if (change >= 0) "↑" else "↓"
+    val tint   = if (change >= 0) colors.secondary else colors.error
+    val text   = String.format(java.util.Locale.US, "%s %.0f%%", arrow, kotlin.math.abs(change))
+    return text to tint
 }
+
+@androidx.compose.runtime.Composable
+private fun wowLabel(current: Float, prev: Float): Pair<String, androidx.compose.ui.graphics.Color> {
+    return wowLabel(current, prev, androidx.compose.material.MaterialTheme.colors)
+}
+
 
 /* -------------------- Grid model -------------------- */
 

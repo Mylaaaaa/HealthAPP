@@ -24,7 +24,11 @@ import java.time.LocalDate
 
 /**
  * Root container for Mindfulness module.
- * Theme-aware: uses MaterialTheme colors (no hard-coded colors).
+ * Supports both light and dark themes (auto follows system theme).
+ *
+ * Tabs:
+ *  - Overview: daily mindfulness summary
+ *  - State:    mental state insights or statistics
  */
 @Composable
 fun MindRootScreen() {
@@ -42,6 +46,7 @@ fun MindRootScreen() {
                 backgroundColor = MaterialTheme.colors.surface,
                 contentColor = MaterialTheme.colors.onSurface
             ) {
+                // --- Overview Tab ---
                 BottomNavigationItem(
                     selected = current?.destination?.route == "mind_overview",
                     onClick = {
@@ -55,9 +60,16 @@ fun MindRootScreen() {
                     selectedContentColor = MaterialTheme.colors.primary,
                     unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
                 )
+
+                // --- State Tab (kept functional) ---
                 BottomNavigationItem(
                     selected = current?.destination?.route == "mind_state",
-                    onClick = { nav.navigate("mind_state") { launchSingleTop = true } },
+                    onClick = {
+                        nav.navigate("mind_state") {
+                            launchSingleTop = true
+                            popUpTo("mind_overview") { inclusive = false }
+                        }
+                    },
                     icon = { Icon(Icons.Filled.Timeline, contentDescription = "State") },
                     label = { Text("State") },
                     selectedContentColor = MaterialTheme.colors.primary,
@@ -65,41 +77,52 @@ fun MindRootScreen() {
                 )
             }
         }
-    ) { inner ->
+    ) { innerPadding ->
         NavHost(
             navController = nav,
             startDestination = "mind_overview",
-            modifier = Modifier.padding(inner)
+            modifier = Modifier.padding(innerPadding)
         ) {
+            // --- Overview Screen ---
             composable("mind_overview") {
                 MindOverviewScreen(
                     onBack = { nav.popBackStack() },
                     onOpenSession = { title, mins, date, tag, auto ->
                         val encodedTitle =
                             URLEncoder.encode(title, StandardCharsets.UTF_8.name())
-                        nav.navigate("mind_session_timer?title=$encodedTitle&mins=$mins&date=$date&tag=$tag&auto=$auto")
+                        nav.navigate(
+                            "mind_session_timer?title=$encodedTitle&mins=$mins&date=$date&tag=$tag&auto=$auto"
+                        )
                     },
                     vm = vm
                 )
             }
+
+            // --- State Screen (this route must exist to avoid crash) ---
             composable("mind_state") {
-                MindStateScreen(onBack = { nav.popBackStack() }, vm = vm)
+                MindStateScreen(
+                    vm = vm
+                )
             }
+
+            // --- Timer Screen ---
             composable(
                 route = "mind_session_timer?title={title}&mins={mins}&date={date}&tag={tag}&auto={auto}",
                 arguments = listOf(
                     navArgument("title") { type = NavType.StringType; defaultValue = "Session" },
                     navArgument("mins") { type = NavType.IntType; defaultValue = 3 },
-                    navArgument("date") { type = NavType.StringType; defaultValue = LocalDate.now().toString() },
+                    navArgument("date") {
+                        type = NavType.StringType; defaultValue = LocalDate.now().toString()
+                    },
                     navArgument("tag") { type = NavType.StringType; defaultValue = "breathing" },
                     navArgument("auto") { type = NavType.BoolType; defaultValue = false }
                 )
-            ) { back ->
-                val title = back.arguments?.getString("title") ?: "Session"
-                val mins = back.arguments?.getInt("mins") ?: 3
-                val dateIso = back.arguments?.getString("date") ?: LocalDate.now().toString()
-                val tag = back.arguments?.getString("tag") ?: "breathing"
-                val auto = back.arguments?.getBoolean("auto") ?: false
+            ) { backStack ->
+                val title = backStack.arguments?.getString("title") ?: "Session"
+                val mins = backStack.arguments?.getInt("mins") ?: 3
+                val dateIso = backStack.arguments?.getString("date") ?: LocalDate.now().toString()
+                val tag = backStack.arguments?.getString("tag") ?: "breathing"
+                val auto = backStack.arguments?.getBoolean("auto") ?: false
 
                 MindSessionTimerScreen(
                     title = title,

@@ -354,8 +354,7 @@ fun HealthConnectNavigation(
             com.example.myhealth.presentation.screen.nutrition.NutritionRootScreen()
         }
         composable(Screen.Mind.route) {
-            val context = LocalContext.current
-            MindRootScreen()
+            MindScreen()
         }
     }
 }

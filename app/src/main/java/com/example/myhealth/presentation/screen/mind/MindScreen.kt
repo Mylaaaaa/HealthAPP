@@ -87,9 +87,6 @@ fun MindRootScreenLegacy() {
                     vm = vm
                 )
             }
-            composable("mind_state") {
-                MindStateScreen(onBack = { nav.popBackStack() }, vm = vm)
-            }
             composable(
                 route = "mind_session_timer?title={title}&mins={mins}&date={date}&tag={tag}&auto={auto}",
                 arguments = listOf(

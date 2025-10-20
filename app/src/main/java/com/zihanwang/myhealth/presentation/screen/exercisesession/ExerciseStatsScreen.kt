@@ -2,46 +2,48 @@
 
 package com.zihanwang.myhealth.presentation.screen.exercisesession
 
-import androidx.compose.runtime.*
-import com.zihanwang.myhealth.data.HealthConnectManager
-import java.time.ZonedDateTime
-import java.time.temporal.TemporalAdjusters
-import java.time.DayOfWeek
-import java.time.LocalDate
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Card
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.Canvas
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import com.zihanwang.myhealth.data.ExerciseSession
+import com.zihanwang.myhealth.data.HealthConnectManager
 import kotlin.math.min
-import androidx.compose.material.Icon
-import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.ui.text.style.TextAlign
-
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.ZonedDateTime
+import java.time.temporal.TemporalAdjusters
 
 /* ============================================================
- *  Host: loads real sessions from Health Connect for this week,
- *  then feeds your existing ExerciseStatsScreen UI.
- *  NOTE: this keeps your original UI & logic untouched.
+ *  Host composable:
+ *  - Loads real sessions from Health Connect for the current week
+ *  - Hosts your existing stats UI
+ *  - Handles item click -> shows detail dialog
+ *  NOTE: To actually get the dialog, your Nav destination must call
+ *        ExerciseStatsScreenHost(...), not ExerciseStatsScreen(...).
  * ============================================================ */
 @Composable
 fun ExerciseStatsScreenHost(
@@ -51,6 +53,7 @@ fun ExerciseStatsScreenHost(
     var sessions by remember { mutableStateOf<List<ExerciseSession>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<Throwable?>(null) }
+    var selected by remember { mutableStateOf<ExerciseSession?>(null) } // keeps the clicked session
 
     LaunchedEffect(Unit) {
         isLoading = true
@@ -81,30 +84,81 @@ fun ExerciseStatsScreenHost(
         }
     }
 
-    // ➋ 最小加载/错误提示（必加）
     when {
-        isLoading -> Text("Loading…", modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.caption)
-        error != null -> Text("Failed to load data",
+        isLoading -> Text(
+            "Loading…",
             modifier = Modifier.padding(16.dp),
-            color = Color.Red, style = MaterialTheme.typography.caption)
-        else -> ExerciseStatsScreen(modifier = modifier, sessions = sessions)
+            style = MaterialTheme.typography.caption
+        )
+        error != null -> Text(
+            "Failed to load data",
+            modifier = Modifier.padding(16.dp),
+            color = Color.Red,
+            style = MaterialTheme.typography.caption
+        )
+        else -> {
+            ExerciseStatsScreen(
+                modifier = modifier,
+                sessions = sessions,
+                onOpenDetail = { sess -> selected = sess } // callback from row click
+            )
+
+            // Show detail as a dialog when an item is selected
+            selected?.let { s ->
+                androidx.compose.ui.window.Dialog(onDismissRequest = { selected = null }) {
+                    Surface(shape = RoundedCornerShape(16.dp)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Session detail", style = MaterialTheme.typography.h6)
+                                Text(
+                                    "Close",
+                                    color = MaterialTheme.colors.primary,
+                                    modifier = Modifier.clickable { selected = null }
+                                )
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            // Reuse your existing detail screen
+                            ExerciseDetailScreen(
+                                session = s,
+                                onClose = { selected = null }
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
-
 /* ============================================================
- *  Your ORIGINAL stats dashboard UI (kept intact)
+ *  Your existing stats dashboard UI (kept intact)
+ *  - Pure UI; it does not load data or open dialogs by itself.
+ *  - onOpenDetail is provided by the Host above.
  * ============================================================ */
 @Composable
 fun ExerciseStatsScreen(
     modifier: Modifier = Modifier,
-    sessions: List<ExerciseSession>
+    sessions: List<ExerciseSession>,
+    onOpenDetail: (ExerciseSession) -> Unit = {}   // keep your original API
 ) {
     // Build UI state from real sessions
     val state = remember(sessions) { buildStatsUiStateFrom(sessions) }
 
-    // --- Empty state: when no sessions in the current week, show a clean full-page placeholder and stop ---
+    // --- Built-in fallback dialog state ---
+    // If the caller doesn't show a dialog, we will show one locally.
+    var localOpen by remember { mutableStateOf<ExerciseSession?>(null) }
+
+    // Wrap the external callback: call it first, then open our local dialog as a fallback.
+    val openDetail: (ExerciseSession) -> Unit = { s ->
+        onOpenDetail(s)     // let the caller handle it if they want
+        localOpen = s       // still open locally so the user always sees something
+    }
+
+    // --- Empty state ---
     if (sessions.isEmpty()) {
         Column(
             modifier = modifier
@@ -112,14 +166,11 @@ fun ExerciseStatsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            // Keep the original section title for consistency
             Text(
                 "This week",
                 style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
             )
             Spacer(Modifier.height(8.dp))
-
-            // Minimal, clean M2 card with icon + message
             EmptyStateCard(
                 title = "No activity this week",
                 subtitle = "Start a session to track your progress."
@@ -200,11 +251,107 @@ fun ExerciseStatsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
+
+        // 5) Recent sessions (tap to open detail)
+        Spacer(Modifier.height(20.dp))
+        SectionTitle("Recent sessions")
+        CardBox {
+            RecentSessionsList(
+                sessions = sessions,
+                onClick = openDetail         // <— use the wrapped callback
+            )
+        }
+    }
+
+    // --- Built-in fallback detail dialog (shows even if caller doesn't handle clicks) ---
+    localOpen?.let { s ->
+        androidx.compose.ui.window.Dialog(onDismissRequest = { localOpen = null }) {
+            androidx.compose.material.Surface(shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Session detail", style = MaterialTheme.typography.h6)
+                        Text(
+                            "Close",
+                            color = MaterialTheme.colors.primary,
+                            modifier = Modifier.clickable { localOpen = null }
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    // Reuse your existing detail screen
+                    ExerciseDetailScreen(
+                        session = s,
+                        onClose = { localOpen = null }
+                    )
+                }
+            }
+        }
     }
 }
 
+@Composable
+private fun RecentSessionsList(
+    sessions: List<ExerciseSession>,
+    onClick: (ExerciseSession) -> Unit
+) {
+    val rows = remember(sessions) { sessions.sortedByDescending { it.startTime }.take(10) }
+    Column(Modifier.fillMaxWidth().padding(8.dp)) {
+        rows.forEach { s ->
+            RecentSessionRow(s) { onClick(s) }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
 
-/* ---------------- UI state ---------------- */
+@Composable
+private fun RecentSessionRow(
+    session: ExerciseSession,
+    onClick: () -> Unit
+) {
+    val colors = MaterialTheme.colors
+    val stroke = colors.onSurface.copy(alpha = 0.12f)
+    val minutes = runCatching {
+        java.time.Duration.between(session.startTime, session.endTime).toMinutes().toInt()
+    }.getOrDefault(0).coerceAtLeast(0)
+
+    Card(
+        backgroundColor = colors.surface,
+        elevation = 0.dp,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() } // whole row is tappable
+            .border(1.dp, stroke, RoundedCornerShape(16.dp))
+            .padding(horizontal = 4.dp)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = session.title.orEmpty().ifBlank { "Session" },
+                    style = MaterialTheme.typography.subtitle2
+                )
+                val day = session.startTime.dayOfWeek.name.first()
+                Text(
+                    text = "$day • ${minutes}m",
+                    style = MaterialTheme.typography.caption,
+                    color = colors.onSurface.copy(alpha = 0.6f)
+                )
+            }
+            // simple chevron
+            Text(">", color = colors.onSurface.copy(alpha = 0.6f))
+        }
+    }
+}
+
+/* ---------------- UI state & helpers ---------------- */
 
 data class StatsUiState(
     val weekCompleted: Int,
@@ -217,8 +364,6 @@ data class StatsUiState(
 )
 
 data class ActivityShare(val name: String, val percent: Int)
-
-/* ---------------- Building blocks ---------------- */
 
 @Composable
 private fun SectionTitle(text: String) {
@@ -245,7 +390,11 @@ private fun CardBox(
             .fillMaxWidth()
             .border(1.dp, stroke, RoundedCornerShape(20.dp))
     ) {
-        Box(Modifier.padding(8.dp), contentAlignment = Alignment.CenterStart, content = content)
+        Box(
+            Modifier.padding(8.dp),
+            contentAlignment = Alignment.CenterStart,
+            content = content
+        )
     }
 }
 
@@ -260,7 +409,13 @@ private fun SummaryProgressCard(completed: Int, goal: Int) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Text("$completed / $goal days completed(per week)", style = MaterialTheme.typography.subtitle1)
             Spacer(Modifier.height(10.dp))
-            LinearProgress(progress = progress, trackColor = track, barColor = bar, height = 10.dp, corner = 8.dp)
+            LinearProgress(
+                progress = progress,
+                trackColor = track,
+                barColor = bar,
+                height = 10.dp,
+                corner = 8.dp
+            )
         }
     }
 }
@@ -298,11 +453,17 @@ private fun BreakdownRow(name: String, percent: Int) {
             Text("$percent%", color = muted, fontSize = 14.sp)
         }
         Spacer(Modifier.height(8.dp))
-        LinearProgress(progress = (percent / 100f).coerceIn(0f, 1f), trackColor = track, barColor = bar, height = 8.dp, corner = 6.dp)
+        LinearProgress(
+            progress = (percent / 100f).coerceIn(0f, 1f),
+            trackColor = track,
+            barColor = bar,
+            height = 8.dp,
+            corner = 6.dp
+        )
     }
 }
 
-/** Rounded-corner horizontal progress bar (M2 safe). */
+/** Rounded-corner horizontal progress bar (Material 2 friendly). */
 @Composable
 private fun LinearProgress(
     progress: Float,
@@ -328,7 +489,7 @@ private fun LinearProgress(
     }
 }
 
-/** Minimal bar chart with Canvas (no 3rd-party lib, works on M2). */
+/** Minimal bar chart using Canvas (no 3rd-party libs). */
 @Composable
 private fun WeeklyBarChart(
     values: List<Int>,
@@ -337,17 +498,15 @@ private fun WeeklyBarChart(
     height: Dp = 120.dp,
     modifier: Modifier = Modifier
 ) {
-    // Colors follow the current theme
     val colors = MaterialTheme.colors
-    val trackColor = colors.onSurface.copy(alpha = 0.12f)   // background rail
-    val barColor = colors.primary                           // filled part
-    val labelColor = colors.onSurface.copy(alpha = 0.60f)   // text under bars
+    val trackColor = colors.onSurface.copy(alpha = 0.12f)
+    val barColor = colors.primary
+    val labelColor = colors.onSurface.copy(alpha = 0.60f)
 
     val bars = min(values.size, labels.size)
     if (bars == 0) return
 
     Column(modifier = modifier) {
-        // --- Bars ---
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
@@ -356,14 +515,14 @@ private fun WeeklyBarChart(
             val barPx = barWidth.toPx()
             val maxV = (values.maxOrNull() ?: 0).coerceAtLeast(1)
             val gap = ((size.width - bars * barPx) / (bars + 1)).coerceAtLeast(0f)
-            val chartHeightPx = size.height * 0.85f // leave room for rounded caps
+            val chartHeightPx = size.height * 0.85f
 
             repeat(bars) { i ->
                 val x = gap + i * (barPx + gap)
                 val v = values[i].coerceAtLeast(0)
                 val h = (v / maxV.toFloat()) * chartHeightPx
 
-                // background "rail"
+                // rail
                 drawLine(
                     color = trackColor,
                     start = Offset(x + barPx / 2, size.height),
@@ -371,7 +530,6 @@ private fun WeeklyBarChart(
                     strokeWidth = barPx,
                     cap = StrokeCap.Round
                 )
-
                 // value
                 if (h > 0f) {
                     drawLine(
@@ -387,7 +545,6 @@ private fun WeeklyBarChart(
 
         Spacer(Modifier.height(6.dp))
 
-        // --- Labels under bars ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -409,11 +566,10 @@ private fun WeeklyBarChart(
 }
 
 /* ============================================================
- *    REAL aggregation from your ExerciseSession (kept)
+ *  Real aggregation from your ExerciseSession list
  * ============================================================ */
 private fun buildStatsUiStateFrom(sessions: List<ExerciseSession>): StatsUiState {
     if (sessions.isEmpty()) {
-        // Graceful fallback when no data
         return StatsUiState(
             weekCompleted = 0,
             weekGoal = 7,
@@ -428,23 +584,24 @@ private fun buildStatsUiStateFrom(sessions: List<ExerciseSession>): StatsUiState
     val zone = java.time.ZoneId.systemDefault()
     val today = java.time.LocalDate.now(zone)
 
-    // Current week range Mon..Sun
     val weekStart = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
     val weekEnd = weekStart.plusDays(6)
 
     data class Sess(val date: LocalDate, val minutes: Int, val title: String)
 
     val norm = sessions.mapNotNull { s ->
-        val startZdt = runCatching { s.startTime }.getOrNull()   // ZonedDateTime?
-        val endZdt   = runCatching { s.endTime }.getOrNull()     // ZonedDateTime?
+        val startZdt = runCatching { s.startTime }.getOrNull()
+        val endZdt = runCatching { s.endTime }.getOrNull()
         if (startZdt == null || endZdt == null) return@mapNotNull null
 
-        val minutes = kotlin.math.max(0, java.time.Duration.between(startZdt, endZdt).toMinutes().toInt())
+        val minutes = kotlin.math.max(
+            0,
+            java.time.Duration.between(startZdt, endZdt).toMinutes().toInt()
+        )
         val date = startZdt.toLocalDate()
         Sess(date = date, minutes = minutes, title = runCatching { s.title }.getOrNull().orEmpty())
     }
 
-    // Weekly minutes (Mon..Sun)
     val weeklyMinutes = IntArray(7) { 0 }
     norm.forEach { ss ->
         if (!ss.date.isBefore(weekStart) && !ss.date.isAfter(weekEnd)) {
@@ -454,8 +611,6 @@ private fun buildStatsUiStateFrom(sessions: List<ExerciseSession>): StatsUiState
     }
 
     val weekCompleted = weeklyMinutes.count { it > 0 }
-    val weekGoal = 7
-
     val totalMinutes = norm.sumOf { it.minutes }
     val avgPerSessionMinutes = if (norm.isNotEmpty()) totalMinutes / norm.size else 0
 
@@ -473,7 +628,7 @@ private fun buildStatsUiStateFrom(sessions: List<ExerciseSession>): StatsUiState
 
     return StatsUiState(
         weekCompleted = weekCompleted,
-        weekGoal = weekGoal,
+        weekGoal = 7,
         totalMinutes = totalMinutes,
         avgPerSessionMinutes = avgPerSessionMinutes,
         longestStreakDays = longestStreakDays,
@@ -526,8 +681,8 @@ private fun guessCategory(title: String): String {
 }
 
 /* ---------------- Preview (UI only) ----------------
- * Preview cannot access your app's HealthConnectManager,
- * so we preview the pure UI with sample sessions.
+ * Preview cannot open dialogs and does not connect to Health Connect.
+ * It is only for design-time rendering.
  * -------------------------------------------------- */
 @Preview(showBackground = true, widthDp = 360, heightDp = 800, name = "Stats – empty state")
 @Composable
@@ -542,7 +697,6 @@ private fun Preview_ExerciseStatsScreen() {
     }
 }
 
-
 @Composable
 private fun EmptyStateCard(
     title: String,
@@ -553,10 +707,11 @@ private fun EmptyStateCard(
     Card(
         backgroundColor = colors.surface,
         elevation = 0.dp,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, stroke, RoundedCornerShape(20.dp))
+            .border(1.dp, stroke, RoundedCornerShape(16.dp))
+            .padding(horizontal = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -568,8 +723,7 @@ private fun EmptyStateCard(
                 imageVector = androidx.compose.material.icons.Icons.Filled.FitnessCenter,
                 contentDescription = null,
                 tint = colors.onSurface.copy(alpha = 0.45f),
-                modifier = Modifier
-                    .size(40.dp)
+                modifier = Modifier.size(40.dp)
             )
             Spacer(Modifier.height(10.dp))
             Text(

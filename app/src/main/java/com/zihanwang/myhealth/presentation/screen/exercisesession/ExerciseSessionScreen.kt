@@ -27,6 +27,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zihanwang.myhealth.presentation.screen.exercisesession.WorkoutDashboardEntry
+import com.zihanwang.myhealth.presentation.screen.exercisesession.ExerciseSessionViewModel
+import com.zihanwang.myhealth.presentation.screen.exercisesession.ExerciseSessionViewModelFactory
 
 
 @Composable
@@ -390,8 +394,43 @@ fun WorkoutPage(
     onDetailsClick: (String) -> Unit,
     onDeleteClick: (String) -> Unit
 ) {
-    WorkoutDashboardM2(
+    // Wrapper overload: auto-provide HealthConnectManager so old call sites keep working
+    val context = LocalContext.current
+    val healthConnectManager = remember { HealthConnectManager(context) }
+
+    WorkoutPage(
         modifier = modifier,
+        sessionsList = sessionsList,
+        backgroundReadAvailable = backgroundReadAvailable,
+        backgroundReadGranted = backgroundReadGranted,
+        onRequestBgRead = onRequestBgRead,
+        onInsertClick = onInsertClick,
+        onDetailsClick = onDetailsClick,
+        onDeleteClick = onDeleteClick,
+        healthConnectManager = healthConnectManager
+    )
+}
+
+@Composable
+fun WorkoutPage(
+    modifier: Modifier = Modifier,
+    sessionsList: List<ExerciseSession>,
+    backgroundReadAvailable: Boolean,
+    backgroundReadGranted: Boolean,
+    onRequestBgRead: () -> Unit,
+    onInsertClick: () -> Unit,
+    onDetailsClick: (String) -> Unit,
+    onDeleteClick: (String) -> Unit,
+    healthConnectManager: HealthConnectManager
+) {
+    // Use your ViewModel with HealthConnectManager via factory
+    val vm: ExerciseSessionViewModel = viewModel(
+        factory = ExerciseSessionViewModelFactory(healthConnectManager)
+    )
+
+    // Feed VM state + callbacks into your existing dashboard UI
+    WorkoutDashboardEntry(
+        vm = vm,
         sessionsList = sessionsList,
         backgroundReadAvailable = backgroundReadAvailable,
         backgroundReadGranted = backgroundReadGranted,
@@ -401,6 +440,8 @@ fun WorkoutPage(
         onDeleteClick = onDeleteClick
     )
 }
+
+
 
 // ===== Sub-components (Material 2) =====
 

@@ -1,18 +1,3 @@
-/*
- * Copyright 2024 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.zihanwang.myhealth.presentation.screen.exercisesession
 
 import android.os.RemoteException
@@ -171,6 +156,46 @@ class ExerciseSessionViewModel(private val healthConnectManager: HealthConnectMa
         // and recomposition won't result in multiple snackbars.
         data class Error(val exception: Throwable, val uuid: UUID = UUID.randomUUID()) : UiState()
     }
+
+    private val _workoutItems = kotlinx.coroutines.flow.MutableStateFlow<List<ExerciseItemUi>>(emptyList())
+    val workoutItems: kotlinx.coroutines.flow.StateFlow<List<ExerciseItemUi>> = _workoutItems
+
+    init {
+        val now = java.time.LocalDate.now()
+        _workoutItems.value = listOf(
+            ExerciseItemUi(id = java.util.UUID.randomUUID().toString(), date = now, duration = java.time.Duration.ofMinutes(30), isCompleted = false),
+            ExerciseItemUi(id = java.util.UUID.randomUUID().toString(), date = now.minusDays(1), duration = java.time.Duration.ofMinutes(45), isCompleted = true),
+        )
+    }
+
+    fun addWorkout(date: java.time.LocalDate, minutes: Int, completed: Boolean) {
+        val list = _workoutItems.value.toMutableList()
+        list.add(0, ExerciseItemUi(java.util.UUID.randomUUID().toString(), date, java.time.Duration.ofMinutes(minutes.toLong()), completed))
+        _workoutItems.value = list
+    }
+
+    fun editWorkout(id: String, date: java.time.LocalDate, minutes: Int, completed: Boolean) {
+        val list = _workoutItems.value.toMutableList()
+        val i = list.indexOfFirst { it.id == id }
+        if (i != -1) {
+            list[i] = list[i].copy(date = date, duration = java.time.Duration.ofMinutes(minutes.toLong()), isCompleted = completed)
+            _workoutItems.value = list
+        }
+    }
+
+    fun deleteWorkout(id: String) {
+        _workoutItems.value = _workoutItems.value.filterNot { it.id == id }
+    }
+
+    fun toggleWorkoutCompleted(id: String) {
+        val list = _workoutItems.value.toMutableList()
+        val i = list.indexOfFirst { it.id == id }
+        if (i != -1) {
+            list[i] = list[i].copy(isCompleted = !list[i].isCompleted)
+            _workoutItems.value = list
+        }
+    }
+
 }
 
 class ExerciseSessionViewModelFactory(
@@ -186,3 +211,4 @@ class ExerciseSessionViewModelFactory(
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
+

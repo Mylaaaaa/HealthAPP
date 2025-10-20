@@ -30,6 +30,19 @@
     <string name="reports">Reports</string>
     <string name="weight_records">Weight records</string>
 
+    <string name="dialog_add_title">Add session</string>
+    <string name="dialog_edit_title">Edit session</string>
+    <string name="date">Date</string>
+    <string name="duration_min">Duration (min)</string>
+    <string name="mark_completed">Mark as completed</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+
+    <string name="add_entry">Add</string>
+    <string name="minutes">min</string>
+    <string name="toggle_complete">Toggle complete</string>
+    <string name="edit">Edit</string>
+    <string name="delete">Delete</string>
 
 
     <!-- Welcome screen -->

@@ -35,13 +35,6 @@ import java.time.LocalDate
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.lerp
 
-/**
- * Nutrition Overview screen.
- * Changes in this version:
- * 1) Add Scaffold Snackbar host and collect ViewModel events to show "Undo" on delete.
- * 2) Add accessibility: contentDescription and semantics for TalkBack/Screen readers.
- * 3) Preserve your original UI structure, colors and DB-driven logic.
- */
 @Composable
 fun NutritionScreen(
     vm: NutritionViewModel = viewModel()

@@ -19,7 +19,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.background
-
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.dp
 
 // Routes used only for inner navigation inside the Nutrition module
 const val ROUTE_NUTRITION_OVERVIEW: String = "nutrition/overview"
@@ -42,13 +44,27 @@ fun NutritionRootScreen() {
 
     Scaffold(
         modifier = Modifier.background(MaterialTheme.colors.background),
+        // --- REPLACE ONLY THIS bottomBar BLOCK (keep everything else as-is) ---
         bottomBar = {
-            BottomNavigation {
+            BottomNavigation(
+                backgroundColor = MaterialTheme.colors.surface,
+                contentColor = MaterialTheme.colors.onSurface.copy(alpha = ContentAlpha.medium),
+                elevation = 8.dp
+            ) {
                 val navBackStackEntry by innerNav.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
+
                 tabs.forEach { tab ->
+                    val selected = currentRoute == tab.route
+
+                    // Match Sleep/Exercise: subtle scale-up for the selected tab
+                    val scale by animateFloatAsState(
+                        targetValue = if (selected) 1.35f else 1f,
+                        label = "nutrition_tab_scale"
+                    )
+
                     BottomNavigationItem(
-                        selected = currentRoute == tab.route,
+                        selected = selected,
                         onClick = {
                             innerNav.navigate(tab.route) {
                                 // Keep a single instance per tab and restore its state
@@ -57,12 +73,25 @@ fun NutritionRootScreen() {
                                 restoreState = true
                             }
                         },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) }
+                        icon = {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.label, // a11y for screen readers
+                                modifier = Modifier.graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                }
+                            )
+                        },
+                        label = { Text(tab.label) },
+                        selectedContentColor = MaterialTheme.colors.primary,
+                        unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                        alwaysShowLabel = true
                     )
                 }
             }
         }
+
     )
     { innerPadding ->
         // Create the AndroidViewModel once and share to both tabs

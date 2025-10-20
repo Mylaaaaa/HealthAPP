@@ -33,6 +33,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.zihanwang.myhealth.data.ExerciseSession
 import kotlin.math.min
+import androidx.compose.material.Icon
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.ui.text.style.TextAlign
+
 
 /* ============================================================
  *  Host: loads real sessions from Health Connect for this week,
@@ -45,38 +49,49 @@ fun ExerciseStatsScreenHost(
     modifier: Modifier = Modifier
 ) {
     var sessions by remember { mutableStateOf<List<ExerciseSession>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<Throwable?>(null) }
 
     LaunchedEffect(Unit) {
-        // Current week: Monday 00:00 -> Sunday 23:59:59.999
-        val now = ZonedDateTime.now()
-        val weekStart = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-            .toLocalDate()
-            .atStartOfDay(now.zone)
-        val weekEnd = weekStart.plusDays(7).minusNanos(1)
+        isLoading = true
+        error = null
+        try {
+            val now = ZonedDateTime.now()
+            val weekStart = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                .toLocalDate().atStartOfDay(now.zone)
+            val weekEnd = weekStart.plusDays(7).minusNanos(1)
 
-        // Read ExerciseSessionRecord from Health Connect
-        val recs = manager.readExerciseSessions(
-            start = weekStart.toInstant(),
-            end   = weekEnd.toInstant()
-        )
-
-        // Map HC records -> your domain model (ZonedDateTime)
-        sessions = recs.map { r ->
-            ExerciseSession(
-                id = r.metadata.id,
-                title = r.title ?: "Session",
-                startTime = r.startTime.atZone(now.zone),               // ZonedDateTime
-                endTime   = r.endTime.atZone(now.zone),                 // ZonedDateTime
-                sourceAppInfo = null
+            val recs = manager.readExerciseSessions(
+                start = weekStart.toInstant(),
+                end = weekEnd.toInstant()
             )
+            sessions = recs.map { r ->
+                ExerciseSession(
+                    id = r.metadata.id,
+                    title = r.title ?: "Session",
+                    startTime = r.startTime.atZone(now.zone),
+                    endTime = r.endTime.atZone(now.zone),
+                    sourceAppInfo = null
+                )
+            }
+        } catch (t: Throwable) {
+            error = t
+        } finally {
+            isLoading = false
         }
     }
 
-    ExerciseStatsScreen(
-        modifier = modifier,
-        sessions = sessions
-    )
+    // ➋ 最小加载/错误提示（必加）
+    when {
+        isLoading -> Text("Loading…", modifier = Modifier.padding(16.dp),
+            style = MaterialTheme.typography.caption)
+        error != null -> Text("Failed to load data",
+            modifier = Modifier.padding(16.dp),
+            color = Color.Red, style = MaterialTheme.typography.caption)
+        else -> ExerciseStatsScreen(modifier = modifier, sessions = sessions)
+    }
 }
+
 
 /* ============================================================
  *  Your ORIGINAL stats dashboard UI (kept intact)
@@ -89,6 +104,31 @@ fun ExerciseStatsScreen(
     // Build UI state from real sessions
     val state = remember(sessions) { buildStatsUiStateFrom(sessions) }
 
+    // --- Empty state: when no sessions in the current week, show a clean full-page placeholder and stop ---
+    if (sessions.isEmpty()) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
+            // Keep the original section title for consistency
+            Text(
+                "This week",
+                style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold)
+            )
+            Spacer(Modifier.height(8.dp))
+
+            // Minimal, clean M2 card with icon + message
+            EmptyStateCard(
+                title = "No activity this week",
+                subtitle = "Start a session to track your progress."
+            )
+        }
+        return
+    }
+
+    // --- Normal content when we do have sessions ---
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -163,6 +203,7 @@ fun ExerciseStatsScreen(
     }
 }
 
+
 /* ---------------- UI state ---------------- */
 
 data class StatsUiState(
@@ -217,7 +258,7 @@ private fun SummaryProgressCard(completed: Int, goal: Int) {
 
     CardBox {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text("$completed / $goal sessions completed", style = MaterialTheme.typography.subtitle1)
+            Text("$completed / $goal days completed(per week)", style = MaterialTheme.typography.subtitle1)
             Spacer(Modifier.height(10.dp))
             LinearProgress(progress = progress, trackColor = track, barColor = bar, height = 10.dp, corner = 8.dp)
         }
@@ -488,39 +529,61 @@ private fun guessCategory(title: String): String {
  * Preview cannot access your app's HealthConnectManager,
  * so we preview the pure UI with sample sessions.
  * -------------------------------------------------- */
-@Preview(showBackground = true, widthDp = 360, heightDp = 800)
+@Preview(showBackground = true, widthDp = 360, heightDp = 800, name = "Stats – empty state")
 @Composable
 private fun Preview_ExerciseStatsScreen() {
-    // Sample data for preview only
-    val zone = java.time.ZoneId.systemDefault()
-    val today = java.time.ZonedDateTime.now(zone)
-    val sample = listOf(
-        ExerciseSession(
-            id = "p1",
-            title = "Run",
-            startTime = today.minusDays(1),
-            endTime = today.minusDays(1).plusMinutes(45),
-            sourceAppInfo = null
-        ),
-        ExerciseSession(
-            id = "p2",
-            title = "Walk",
-            startTime = today.minusDays(2),
-            endTime = today.minusDays(2).plusMinutes(30),
-            sourceAppInfo = null
-        ),
-        ExerciseSession(
-            id = "p3",
-            title = "Yoga",
-            startTime = today.minusDays(3),
-            endTime = today.minusDays(3).plusMinutes(60),
-            sourceAppInfo = null
-        )
-    )
-
     MaterialTheme {
         Column(Modifier.padding(16.dp)) {
-            ExerciseStatsScreen(modifier = Modifier.fillMaxSize(), sessions = sample)
+            ExerciseStatsScreen(
+                modifier = Modifier.fillMaxSize(),
+                sessions = emptyList()
+            )
+        }
+    }
+}
+
+
+@Composable
+private fun EmptyStateCard(
+    title: String,
+    subtitle: String
+) {
+    val colors = MaterialTheme.colors
+    val stroke = colors.onSurface.copy(alpha = 0.12f)
+    Card(
+        backgroundColor = colors.surface,
+        elevation = 0.dp,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, stroke, RoundedCornerShape(20.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = androidx.compose.material.icons.Icons.Filled.FitnessCenter,
+                contentDescription = null,
+                tint = colors.onSurface.copy(alpha = 0.45f),
+                modifier = Modifier
+                    .size(40.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold),
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.caption,
+                color = colors.onSurface.copy(alpha = 0.6f),
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

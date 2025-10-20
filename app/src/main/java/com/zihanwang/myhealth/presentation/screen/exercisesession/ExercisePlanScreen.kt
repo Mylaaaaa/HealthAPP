@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/myhealth/presentation/screen/exercisesession/ExercisePlanScreen.kt
 package com.zihanwang.myhealth.presentation.screen.exercisesession
 
 import com.zihanwang.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
@@ -624,7 +623,7 @@ private fun PlanOverview(
 }
 @Composable private fun DayBadge(threeLetter: String) {
     Box(
-        Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colors.primary.copy(alpha = 0.12f)),
+        Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colors.primary.copy(alpha = 0.12f)),
         contentAlignment = Alignment.Center
     ) { Text(threeLetter.uppercase(), fontWeight = FontWeight.Bold, color = MaterialTheme.colors.primary) }
 }

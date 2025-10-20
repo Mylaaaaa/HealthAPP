@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,6 +35,13 @@ import java.time.LocalDate
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.lerp
 
+/**
+ * Nutrition Overview screen.
+ * Changes in this version:
+ * 1) Add Scaffold Snackbar host and collect ViewModel events to show "Undo" on delete.
+ * 2) Add accessibility: contentDescription and semantics for TalkBack/Screen readers.
+ * 3) Preserve your original UI structure, colors and DB-driven logic.
+ */
 @Composable
 fun NutritionScreen(
     vm: NutritionViewModel = viewModel()
@@ -56,28 +65,43 @@ fun NutritionScreen(
     }
     LaunchedEffect(Unit) { vm.openDatePicker.collect { datePicker.show() } }
 
-    // ---- THEME HOOKS ----
-    // IMPORTANT: derive darkness from the *current Material theme*, not the system setting.
+    // Theme hooks (retain your look & feel)
     val isDark = !MaterialTheme.colors.isLight
-
-    // Force obvious contrast for cards so dark/light are undeniably different
     val cardBg = if (isDark) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
-
-    // FAB rule: Dark = green, Light = blue
     val fabContainer = if (isDark) Color(0xFF2E7D32) else Color(0xFF1976D2)
     val fabContent = Color.White
-
-    // Recommended chips background: stronger on dark
     val recChipBg = if (isDark)
         MaterialTheme.colors.primary.copy(alpha = 0.28f)
     else
         MaterialTheme.colors.primary.copy(alpha = 0.08f)
 
+    // --- NEW: Snackbar host state to support "Undo" ---
+    val scaffoldState = rememberScaffoldState()
+
+    // Collect one-shot UI events (Snackbar for undo)
+    LaunchedEffect(Unit) {
+        vm.events.collect { e ->
+            when (e) {
+                is NutritionViewModel.UiEvent.ShowUndoDelete -> {
+                    val res = scaffoldState.snackbarHostState.showSnackbar(
+                        message = e.message,
+                        actionLabel = "Undo"
+                    )
+                    if (res == SnackbarResult.ActionPerformed) {
+                        vm.undoDelete()
+                    }
+                }
+            }
+        }
+    }
+
     Scaffold(
+        scaffoldState = scaffoldState,
+        snackbarHost = { SnackbarHost(it) },
         backgroundColor = MaterialTheme.colors.background,
         topBar = {
             TopAppBar(
-                title = { /* keep empty or show date if you want */ },
+                title = { /* optional: show selected date string */ },
                 actions = {
                     IconButton(onClick = { datePicker.show() }) {
                         Icon(
@@ -97,7 +121,9 @@ fun NutritionScreen(
                 onClick = { showAdd = true },
                 backgroundColor = fabContainer,
                 contentColor = fabContent
-            ) { Icon(Icons.Default.Add, contentDescription = "Add food") }
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add food")
+            }
         }
     ) { padding ->
         Column(
@@ -146,10 +172,15 @@ fun NutritionScreen(
                                     shape = RoundedCornerShape(16.dp),
                                     border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.10f)),
                                     color = recChipBg,
-                                    modifier = Modifier.clickable {
-                                        preselectFood = f
-                                        showAdd = true
-                                    }
+                                    modifier = Modifier
+                                        .clickable {
+                                            preselectFood = f
+                                            showAdd = true
+                                        }
+                                        .semantics {
+                                            // Accessibility: announce chip action
+                                            contentDescription = "Add ${f.name}"
+                                        }
                                 ) {
                                     Text(
                                         f.name,
@@ -181,7 +212,10 @@ fun NutritionScreen(
             ) {
                 if (meals.isEmpty()) {
                     Column(
-                        Modifier.fillMaxWidth().padding(24.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
+                            .semantics { contentDescription = "No items. Tap add to create your first meal." },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(42.dp).clip(CircleShape))
@@ -192,8 +226,20 @@ fun NutritionScreen(
                 } else {
                     LazyColumn(contentPadding = PaddingValues(12.dp)) {
                         items(meals, key = { it.entry.id }) { m ->
+                            val scaled = scale(m.food, m.entry.grams)
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                                    .semantics {
+                                        // Accessibility: read key info in a single phrase
+                                        contentDescription =
+                                            "${m.food.name}, ${m.entry.grams} grams, " +
+                                                    "${scaled.kcal} kilocalories, " +
+                                                    "Carbs ${"%.1f".format(scaled.carb)} grams, " +
+                                                    "Protein ${"%.1f".format(scaled.protein)} grams, " +
+                                                    "Fat ${"%.1f".format(scaled.fat)} grams"
+                                    },
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 MealBadge(type = m.entry.mealType)
@@ -204,11 +250,16 @@ fun NutritionScreen(
                                         style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold),
                                         maxLines = 1, overflow = TextOverflow.Ellipsis
                                     )
-                                    val scaled = scale(m.food, m.entry.grams)
                                     Text("${m.entry.grams} g • ${scaled.pretty()}", style = MaterialTheme.typography.body2)
                                 }
-                                IconButton(onClick = { vm.deleteMeal(m.entry.id) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                IconButton(
+                                    onClick = { vm.deleteMeal(m) },
+                                    modifier = Modifier.size(48.dp) // touch target >= 48dp
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete ${m.food.name}"
+                                    )
                                 }
                             }
                             Divider()
@@ -248,7 +299,10 @@ private fun ConditionSection(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text("Health Conditions", style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
-        TextButton(onClick = { adding = !adding }) { Text(if (adding) "Close" else "Add") }
+        TextButton(
+            onClick = { adding = !adding },
+            modifier = Modifier.semantics { contentDescription = if (adding) "Close add condition" else "Add condition" }
+        ) { Text(if (adding) "Close" else "Add") }
     }
 
     AnimatedVisibility(visible = adding) {
@@ -258,15 +312,20 @@ private fun ConditionSection(
                 onValueChange = { text = it },
                 label = { Text("e.g., Diabetes, Hypertension") },
                 singleLine = true,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = "Condition name input" }
             )
             Spacer(Modifier.width(8.dp))
-            Button(onClick = {
-                val t = text.trim()
-                if (t.isNotEmpty()) {
-                    onAdd(t); text = ""; adding = false
-                }
-            }) { Text("Save") }
+            Button(
+                onClick = {
+                    val t = text.trim()
+                    if (t.isNotEmpty()) {
+                        onAdd(t); text = ""; adding = false
+                    }
+                },
+                modifier = Modifier.semantics { contentDescription = "Save condition" }
+            ) { Text("Save") }
         }
     }
 
@@ -301,7 +360,6 @@ private fun ConditionChip(
             if (isDark) MaterialTheme.colors.primary.copy(alpha = 0.28f)
             else MaterialTheme.colors.primary.copy(alpha = 0.12f)
         } else {
-            // unselected: keep readable on dark (not pitch black)
             if (isDark) Color(0xFF2A2A2A) else Color(0xFFFFFFFF)
         }
 
@@ -311,15 +369,19 @@ private fun ConditionChip(
         border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.10f))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .semantics { contentDescription = "$name, ${if (selected) "selected" else "not selected"}" },
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(name, style = MaterialTheme.typography.caption, modifier = Modifier.clickable { onToggle() })
             Spacer(Modifier.width(6.dp))
             Icon(
                 Icons.Default.Clear,
-                contentDescription = "Remove",
-                modifier = Modifier.size(16.dp).clickable { onRemove() }
+                contentDescription = "Remove $name",
+                modifier = Modifier
+                    .size(16.dp)
+                    .clickable { onRemove() }
             )
         }
     }
@@ -328,14 +390,15 @@ private fun ConditionChip(
 // ------------ Summary chips ------------
 @Composable
 private fun SummaryRow(totals: NutritionRepository.Totals) {
-    // Pastel backgrounds for light; reduce blending on dark so they don't wash out.
     val bgCalories = pastel(Color(0xFFEF9A9A), darkStrength = 0.75f)   // soft red
     val bgCarbs    = pastel(Color(0xFFFFCC80), darkStrength = 0.75f)   // warm orange
     val bgProtein  = pastel(Color(0xFF90CAF9), darkStrength = 0.75f)   // soft blue
     val bgFat      = pastel(Color(0xFFA5D6A7), darkStrength = 0.75f)   // soft green
 
     Row(
-        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         SummaryChip(title = "Calories", value = "${totals.kcal} kcal", background = bgCalories)
@@ -357,7 +420,10 @@ private fun SummaryChip(
         shape = RoundedCornerShape(14.dp),
         color = background,
         elevation = 0.dp,
-        modifier = Modifier.padding(horizontal = 4.dp).defaultMinSize(minWidth = 86.dp)
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .defaultMinSize(minWidth = 86.dp)
+            .semantics { contentDescription = "$title $value" }
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -375,9 +441,7 @@ fun pastel(
     lightColor: Color,
     darkStrength: Float = 0.60f
 ): Color {
-    // Use given pastel in light theme
     if (MaterialTheme.colors.isLight) return lightColor
-    // In dark: blend from surface to pastel, smaller darkStrength => more contrast
     val surface = MaterialTheme.colors.surface
     val t = darkStrength.coerceIn(0f, 1f)
     return lerp(surface, lightColor, t)
@@ -398,7 +462,9 @@ private fun MealBadge(type: MealType) {
     ) {
         Text(
             label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .semantics { contentDescription = label },
             style = MaterialTheme.typography.caption.copy(fontWeight = FontWeight.Medium)
         )
     }
@@ -440,14 +506,19 @@ private fun AddFoodDialog(
                     onValueChange = { query = it },
                     label = { Text("Search food") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Search food input" }
                 )
                 Spacer(Modifier.height(8.dp))
 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.06f)),
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp)
+                        .semantics { contentDescription = "Food search results" }
                 ) {
                     if (foods.isEmpty()) {
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -457,7 +528,11 @@ private fun AddFoodDialog(
                         LazyColumn {
                             items(foods) { f ->
                                 Row(
-                                    Modifier.fillMaxWidth().clickable { selected = f }.padding(12.dp),
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selected = f }
+                                        .padding(12.dp)
+                                        .semantics { contentDescription = "Select ${f.name}" },
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(Modifier.weight(1f)) {
@@ -488,7 +563,9 @@ private fun AddFoodDialog(
                     onValueChange = { gramsText = it.filter(Char::isDigit) },
                     label = { Text("Grams") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Grams input" }
                 )
 
                 AnimatedVisibility(visible = selected != null) {
@@ -508,10 +585,16 @@ private fun AddFoodDialog(
                     val g = gramsText.toIntOrNull() ?: return@TextButton
                     val s = selected ?: return@TextButton
                     onConfirm(s, g, meal)
-                }
+                },
+                modifier = Modifier.semantics { contentDescription = "Confirm add food" }
             ) { Text("Add") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.semantics { contentDescription = "Cancel add food" }
+            ) { Text("Cancel") }
+        }
     )
 }
 
@@ -528,7 +611,9 @@ private fun FilterChip(selected: Boolean, onClick: () -> Unit, text: String) {
         shape = RoundedCornerShape(12.dp),
         color = bg,
         border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.10f)),
-        modifier = Modifier.clickable { onClick() }
+        modifier = Modifier
+            .clickable { onClick() }
+            .semantics { contentDescription = "$text ${if (selected) "selected" else "not selected"}" }
     ) {
         Text(text, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.caption)
     }

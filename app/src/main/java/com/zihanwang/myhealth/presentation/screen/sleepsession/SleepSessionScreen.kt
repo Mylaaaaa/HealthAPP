@@ -25,6 +25,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -35,17 +37,12 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
-
-/* ============================================================================
- * Sleep Sessions Screen (Compose / Material)
- * - Overview: if Today/Yesterday are empty -> inject fake data + show analysis & tips
- * - Log: expandable rows with stage timeline
- * - Stats: last 7 days stacked bars; weekday letters aligned with bars
- *
- * IMPORTANT: This project uses the 3-parameter Stage constructor:
- *   SleepSessionRecord.Stage(
- *       startTime = …, endTime = …, stage = …)
- * ========================================================================== */
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 
 @Composable
 fun SleepSessionScreen(
@@ -58,6 +55,7 @@ fun SleepSessionScreen(
     onPermissionsResult: () -> Unit,
     onPermissionsLaunch: (Set<String>) -> Unit
 ) {
+    // Avoid duplicate error toasts for the same error
     val lastErrorId = remember { mutableStateOf(UUID.randomUUID()) }
     LaunchedEffect(uiState) {
         if (uiState is SleepSessionViewModel.UiState.Uninitialized) onPermissionsResult()
@@ -70,8 +68,11 @@ fun SleepSessionScreen(
     val zone = remember { ZoneId.systemDefault() }
     val today = remember { LocalDate.now(zone) }
 
-    // UI-only augmentation (no writes): always ensure Today / Yesterday + last 7 days exist
-    val sessions = remember(sessionsList) { augmentWithFakes3Param(sessionsList, zone, today) }
+    // Augment only when authorized and non-empty; otherwise show proper Empty states
+    val sessions = remember(sessionsList, permissionsGranted) {
+        if (!permissionsGranted || sessionsList.isEmpty()) sessionsList
+        else augmentWithFakes3Param(sessionsList, zone, today)
+    }
 
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
@@ -80,21 +81,85 @@ fun SleepSessionScreen(
         NavItem("Stats", Icons.Filled.BarChart)
     )
 
+    /* --------------------------- Top-level states --------------------------- */
+    when (uiState) {
+        is SleepSessionViewModel.UiState.Uninitialized -> {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return
+        }
+        is SleepSessionViewModel.UiState.Error -> {
+            val err = (uiState as SleepSessionViewModel.UiState.Error).exception
+            ErrorCard(
+                message = err.localizedMessage ?: "Unknown error",
+                onRetry = onPermissionsResult
+            )
+            return
+        }
+        is SleepSessionViewModel.UiState.Done -> Unit
+    }
+
+    // Permission empty
+    if (!permissionsGranted) {
+        EmptyCard(
+            title = "Permissions needed",
+            desc = "To read your sleep data, please grant Health Connect permissions.",
+            primary = "Grant permissions",
+            onPrimary = { onPermissionsLaunch(permissions) }
+        )
+        return
+    }
+
+    // No data empty
+    if (sessionsList.isEmpty()) {
+        EmptyCard(
+            title = "No sleep sessions",
+            desc = "We couldn't find any recent sleep sessions. You can insert sample data for demo.",
+            primary = "Insert sample",
+            onPrimary = onInsertClick
+        )
+        return
+    }
+
+    /* ------------------------------- Content ------------------------------- */
     Scaffold(
         bottomBar = {
-            BottomNavigation(backgroundColor = MaterialTheme.colors.primary, contentColor = Color.White) {
+            BottomNavigation(
+                backgroundColor = MaterialTheme.colors.surface, // Same gray surface background
+                contentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f) // Inactive icon tint
+            ) {
                 tabs.forEachIndexed { i, item ->
+                    val selected = (selectedTab == i)
+
+                    // Scale animation for selected tab (same as Exercise screen)
+                    val scale by animateFloatAsState(
+                        targetValue = if (selected) 1.35f else 1f, // Pop animation
+                        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                    )
+
                     BottomNavigationItem(
-                        selected = selectedTab == i,
+                        selected = selected,
                         onClick = { selectedTab = i },
-                        icon = { Icon(item.icon, contentDescription = item.label, tint = Color.White) },
-                        label = { Text(item.label, color = Color.White) },
-                        selectedContentColor = Color.White,
-                        unselectedContentColor = Color.White.copy(alpha = 0.6f)
+                        icon = {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.label,
+                                modifier = Modifier.graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                }
+                            )
+                        },
+                        label = { Text(item.label) },
+                        selectedContentColor = MaterialTheme.colors.primary, // Green when active
+                        unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                        alwaysShowLabel = true
                     )
                 }
             }
         }
+
     ) { inner ->
         Column(
             Modifier
@@ -111,6 +176,53 @@ fun SleepSessionScreen(
     }
 }
 
+/* ------------------------------- Reusables ------------------------------- */
+
+@Composable
+private fun EmptyCard(
+    title: String,
+    desc: String,
+    primary: String,
+    onPrimary: () -> Unit
+) {
+    Card(
+        elevation = 4.dp,
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(title, style = MaterialTheme.typography.h6, fontWeight = FontWeight.Bold)
+            Text(desc)
+            Button(onClick = onPrimary, modifier = Modifier.align(Alignment.End)) {
+                Text(primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ErrorCard(message: String, onRetry: () -> Unit) {
+    Card(
+        elevation = 4.dp,
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Something went wrong", style = MaterialTheme.typography.h6, fontWeight = FontWeight.Bold)
+            Text(message, color = MaterialTheme.colors.error)
+            Button(onClick = onRetry, modifier = Modifier.align(Alignment.End)) { Text("Retry") }
+        }
+    }
+}
+
 /* =============================== Overview ================================== */
 
 @Composable
@@ -122,14 +234,24 @@ private fun OverviewTab(sessions: List<SleepSessionData>) {
     val todaySession = sessionForDate(sessions, today, zone)
     val yesterdaySession = sessionForDate(sessions, yesterday, zone)
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         OverviewCard(title = "Today", s = todaySession, zone = zone, all = sessions)
         OverviewCard(title = "Yesterday", s = yesterdaySession, zone = zone, all = sessions)
     }
 }
 
 @Composable
-private fun OverviewCard(title: String, s: SleepSessionData?, zone: ZoneId, all: List<SleepSessionData>) {
+private fun OverviewCard(
+    title: String,
+    s: SleepSessionData?,
+    zone: ZoneId,
+    all: List<SleepSessionData>
+) {
     Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.subtitle1, fontWeight = FontWeight.SemiBold)
@@ -143,7 +265,18 @@ private fun OverviewCard(title: String, s: SleepSessionData?, zone: ZoneId, all:
             Text("${formatHhMm(m.totalMinutes)}  •  Efficiency ${m.efficiencyPercent}%")
             Text("Bedtime ${tf.format(s.startTime)}  ·  Wake-up ${tf.format(s.endTime)}")
 
-            StageBreakdown(deep = m.deepMin, light = m.lightMin, rem = m.remMin, awake = m.awakeMin)
+            StageBreakdown(
+                deep = m.deepMin,
+                light = m.lightMin,
+                rem = m.remMin,
+                awake = m.awakeMin
+            )
+
+            // Spoken-friendly line for screen readers (doesn't change visuals)
+            Text(
+                "Summary: total ${formatHhMm(m.totalMinutes)}, deep ${formatHhMm(m.deepMin)}, " +
+                        "REM ${formatHhMm(m.remMin)}, efficiency ${m.efficiencyPercent} percent"
+            )
 
             // Analysis
             val avg = all.averageMinutes()
@@ -159,16 +292,6 @@ private fun OverviewCard(title: String, s: SleepSessionData?, zone: ZoneId, all:
             val pctRem = if (m.totalMinutes > 0) (m.remMin * 100 / m.totalMinutes) else 0
             Text("• Deep ${pctDeep}%, REM ${pctRem}% (typical Deep 13–23%, REM 20–25%).")
             Text("• Awake ${formatHhMm(m.awakeMin)}; efficiency ${m.efficiencyPercent}%.")
-
-            // Tips
-            val tips = buildList {
-                if (m.totalMinutes < 7 * 60) add("Aim for ≥ 7 hours tonight.")
-                if (m.efficiencyPercent < 85) add("Cut screen time 30 min before bed; keep room cool and dark.")
-                if (m.bedtimeOffsetStdMin != null && m.bedtimeOffsetStdMin > 45) add("Keep bedtime within a 45-minute window.")
-                if (isEmpty()) add("Nice work—keep your schedule consistent!")
-            }
-            Text("Tips", fontWeight = FontWeight.SemiBold)
-            tips.forEach { Text("• $it") }
         }
     }
 }
@@ -187,12 +310,18 @@ private fun LogTab(sessions: List<SleepSessionData>) {
             Card(
                 elevation = 3.dp,
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
             ) {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(formatHhMm((s.duration ?: Duration.ZERO).toMinutes().toInt()), style = MaterialTheme.typography.h6, fontWeight = FontWeight.Bold)
+                            Text(
+                                formatHhMm((s.duration ?: Duration.ZERO).toMinutes().toInt()),
+                                style = MaterialTheme.typography.h6,
+                                fontWeight = FontWeight.Bold
+                            )
                             val startLocal = s.startTime.atZone(ZoneId.systemDefault()).format(tf)
                             val endLocal = s.endTime.atZone(ZoneId.systemDefault()).format(tf)
                             Text("$startLocal – $endLocal", color = Color.Gray)
@@ -245,7 +374,11 @@ private fun StatsTab(sessions: List<SleepSessionData>) {
 
 /* ============================== Fake data (3-param Stage) =================== */
 
-private fun augmentWithFakes3Param(original: List<SleepSessionData>, zone: ZoneId, today: LocalDate): List<SleepSessionData> {
+private fun augmentWithFakes3Param(
+    original: List<SleepSessionData>,
+    zone: ZoneId,
+    today: LocalDate
+): List<SleepSessionData> {
     val startDay = today.minusDays(6)
     val byWake = original.groupBy { it.endTime.atZone(zone).toLocalDate() }.toMutableMap()
 
@@ -276,7 +409,6 @@ private fun makeFakeFor3Param(date: LocalDate, zone: ZoneId): SleepSessionData {
     var cursor = start
     fun add(kind: Int, minutes: Int) {
         val end = cursor.plusSeconds(minutes * 60L)
-        // 3-parameter constructor to match your project’s HC version
         stages += SleepSessionRecord.Stage(
             startTime = cursor,
             endTime = end,
@@ -303,22 +435,35 @@ private fun makeFakeFor3Param(date: LocalDate, zone: ZoneId): SleepSessionData {
 
 /* ======================= Aggregation & visualization ======================= */
 
-private data class DayAgg(val date: LocalDate, val total: Int, val deep: Int, val light: Int, val rem: Int, val awake: Int)
+private data class DayAgg(
+    val date: LocalDate,
+    val total: Int,
+    val deep: Int,
+    val light: Int,
+    val rem: Int,
+    val awake: Int
+)
 
-private fun aggregateLast7(sessions: List<SleepSessionData>, zone: ZoneId, today: LocalDate): List<DayAgg> {
+private fun aggregateLast7(
+    sessions: List<SleepSessionData>,
+    zone: ZoneId,
+    today: LocalDate
+): List<DayAgg> {
     val startDay = today.minusDays(6)
     val map = mutableMapOf<LocalDate, MutableList<SleepSessionData>>()
     sessions.forEach { s ->
         val d = s.endTime.atZone(zone).toLocalDate()
         if (!d.isBefore(startDay) && !d.isAfter(today)) map.getOrPut(d) { mutableListOf() }.add(s)
     }
-    fun mins(a: Instant, b: Instant) = Duration.between(a, b).toMinutes().toInt().coerceAtLeast(0)
+    fun mins(a: Instant, b: Instant) =
+        Duration.between(a, b).toMinutes().toInt().coerceAtLeast(0)
 
     return (0..6).map { i ->
         val d = startDay.plusDays(i.toLong())
         var deep = 0; var light = 0; var rem = 0; var awake = 0; var total = 0
         for (s in map[d].orEmpty()) {
-            total += (s.duration ?: Duration.between(s.startTime, s.endTime)).toMinutes().toInt().coerceAtLeast(0)
+            total += (s.duration ?: Duration.between(s.startTime, s.endTime))
+                .toMinutes().toInt().coerceAtLeast(0)
             s.stages.forEach { st ->
                 val m = mins(st.startTime, st.endTime)
                 when (st.stage) {
@@ -338,7 +483,12 @@ private fun aggregateLast7(sessions: List<SleepSessionData>, zone: ZoneId, today
 @Composable
 private fun WeeklyBars(days: List<DayAgg>, barWidth: Dp, height: Dp) {
     val bw = with(LocalDensity.current) { barWidth.toPx() }
-    Canvas(Modifier.fillMaxWidth().height(height)) {
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(height)
+            .semantics { contentDescription = "Weekly sleep stages stacked bars" } // a11y
+    ) {
         val w = size.width
         val h = size.height
         val n = days.size.coerceAtLeast(1)
@@ -352,7 +502,7 @@ private fun WeeklyBars(days: List<DayAgg>, barWidth: Dp, height: Dp) {
             val cx = seg * i + seg / 2f
             val left = cx - bw / 2f
 
-            // Background track
+            // Background track (not a stage)
             drawRect(color = Color(0xFFE5E7EB), topLeft = Offset(left, top), size = Size(bw, trackH))
 
             var curTop = bottom
@@ -373,25 +523,35 @@ private fun WeeklyBars(days: List<DayAgg>, barWidth: Dp, height: Dp) {
 
 @Composable
 private fun StageTimelineBar(stages: List<SleepSessionRecord.Stage>, height: Dp) {
-    val total = stages.sumOf { Duration.between(it.startTime, it.endTime).toMinutes().toInt().coerceAtLeast(1) }.coerceAtLeast(1)
+    val total = stages
+        .sumOf { Duration.between(it.startTime, it.endTime).toMinutes().toInt().coerceAtLeast(1) }
+        .coerceAtLeast(1)
     Row(
-        Modifier.fillMaxWidth().height(height).background(Color(0x14000000), CircleShape).padding(1.dp),
+        Modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(Color(0x14000000), CircleShape)
+            .padding(1.dp)
+            .semantics { contentDescription = "Sleep stages timeline" }, // a11y
         verticalAlignment = Alignment.CenterVertically
     ) {
         stages.forEachIndexed { i, s ->
             val m = Duration.between(s.startTime, s.endTime).toMinutes().toInt().coerceAtLeast(1)
             val weight = m / total.toFloat()
             Box(
-                Modifier.fillMaxHeight().weight(weight).background(
-                    when (s.stage) {
-                        SleepSessionRecord.STAGE_TYPE_DEEP -> Color(0xFF26A69A)
-                        SleepSessionRecord.STAGE_TYPE_LIGHT -> Color(0xFF42A5F5)
-                        SleepSessionRecord.STAGE_TYPE_REM -> Color(0xFF7E57C2)
-                        SleepSessionRecord.STAGE_TYPE_AWAKE -> Color(0xFFF6A13E)
-                        else -> Color.LightGray
-                    },
-                    CircleShape
-                )
+                Modifier
+                    .fillMaxHeight()
+                    .weight(weight)
+                    .background(
+                        when (s.stage) {
+                            SleepSessionRecord.STAGE_TYPE_DEEP -> Color(0xFF26A69A)
+                            SleepSessionRecord.STAGE_TYPE_LIGHT -> Color(0xFF42A5F5)
+                            SleepSessionRecord.STAGE_TYPE_REM -> Color(0xFF7E57C2)
+                            SleepSessionRecord.STAGE_TYPE_AWAKE -> Color(0xFFF6A13E)
+                            else -> Color.LightGray
+                        },
+                        CircleShape
+                    )
             )
             if (i != stages.lastIndex) Spacer(Modifier.width(2.dp))
         }
@@ -421,7 +581,9 @@ private fun StageLegend() {
 
 @Composable
 private fun WeeklyAnalysisCard(sessions: List<SleepSessionData>, zone: ZoneId) {
-    val totalMin = sessions.sumOf { (it.duration ?: Duration.between(it.startTime, it.endTime)).toMinutes().toInt().coerceAtLeast(0) }
+    val totalMin = sessions.sumOf {
+        (it.duration ?: Duration.between(it.startTime, it.endTime)).toMinutes().toInt().coerceAtLeast(0)
+    }
     val count = sessions.size
     val avg = if (count > 0) totalMin / count else 0
     val debt = (7 * 8 * 60 - totalMin).coerceAtLeast(0)
@@ -481,14 +643,17 @@ private fun metrics(s: SleepSessionData): DayMetrics {
     val light = by[SleepSessionRecord.STAGE_TYPE_LIGHT] ?: 0
     val rem = by[SleepSessionRecord.STAGE_TYPE_REM] ?: 0
     val awake = by[SleepSessionRecord.STAGE_TYPE_AWAKE] ?: 0
-    val total = (s.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(deep + light + rem + awake)
+    val total = (s.duration ?: Duration.ZERO).toMinutes().toInt()
+        .coerceAtLeast(deep + light + rem + awake)
     val asleep = deep + light + rem
     val eff = if (total > 0) ((asleep * 100f) / total).roundToInt() else 0
     return DayMetrics(total, asleep, awake, deep, light, rem, eff)
 }
 
 private fun List<SleepSessionData>.averageMinutes(): Int =
-    if (isEmpty()) 0 else map { (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0) }.average().roundToInt()
+    if (isEmpty()) 0 else map {
+        (it.duration ?: Duration.ZERO).toMinutes().toInt().coerceAtLeast(0)
+    }.average().roundToInt()
 
 private fun List<Int>.stdDevRounded(): Int {
     if (isEmpty()) return 0

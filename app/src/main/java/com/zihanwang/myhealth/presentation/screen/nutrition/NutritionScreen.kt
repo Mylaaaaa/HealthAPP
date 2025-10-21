@@ -264,7 +264,7 @@ fun NutritionScreen(
             preselected = preselectFood,
             onDismiss = { showAdd = false },
             onConfirm = { selected, grams, meal ->
-                vm.addMeal(meal, selected.code, grams)
+                vm.addMeal(meal, selected.code, grams, selected)
                 showAdd = false
             }
         )
@@ -551,13 +551,14 @@ private fun AddFoodDialog(
                                         selected = FoodEntity(
                                             code = f.name.take(12).replace(" ", "_"), // generate temp code
                                             name = f.name,
-                                            kcal = f.kcal.toInt(),          // ✅ Int
-                                            protein = f.protein.toFloat(),  // ✅ Float
-                                            carb = f.carb.toFloat(),        // ✅ Float
-                                            fat = f.fat.toFloat(),          // ✅ Float
-                                            satFat = 0f,                    // ✅ Float
-                                            sodium = 0f,                    // ✅ Float
-                                            sugar = 0f                      // ✅ Float
+                                            kcal = f.kcal.toInt(),
+                                            protein = f.protein.toFloat(),
+                                            carb = f.carb.toFloat(),
+                                            fat = f.fat.toFloat(),
+                                            satFat = f.fat * 0.2f,
+                                            sodium = 50f,
+                                            sugar = (f as? NutritionViewModel.ExternalFoodItem)?.carb?.times(0.1f)
+                                                ?: 1f
                                         )
                                         query = f.name
                                         searching = false

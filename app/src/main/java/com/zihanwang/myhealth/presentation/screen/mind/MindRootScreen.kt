@@ -21,6 +21,10 @@ import androidx.navigation.navArgument
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.LocalDate
+import androidx.compose.animation.core.FastOutSlowInEasing   // for easing curve
+import androidx.compose.animation.core.animateFloatAsState   // for scale animation
+import androidx.compose.animation.core.tween                 // for duration
+import androidx.compose.ui.graphics.graphicsLayer           // to apply scaleX/scaleY
 
 /**
  * Root container for Mindfulness module.
@@ -47,30 +51,60 @@ fun MindRootScreen() {
                 contentColor = MaterialTheme.colors.onSurface
             ) {
                 // --- Overview Tab ---
+                val overviewSelected = current?.destination?.route == "mind_overview"
+                val overviewScale by animateFloatAsState(
+                    targetValue = if (overviewSelected) 1.35f else 1f,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                )
+
                 BottomNavigationItem(
-                    selected = current?.destination?.route == "mind_overview",
+                    selected = overviewSelected,
                     onClick = {
                         nav.navigate("mind_overview") {
                             launchSingleTop = true
                             popUpTo("mind_overview") { inclusive = false }
                         }
                     },
-                    icon = { Icon(Icons.Filled.Psychology, contentDescription = "Overview") },
+                    icon = {
+                        Icon(
+                            Icons.Filled.Psychology,
+                            contentDescription = "Overview",
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = overviewScale
+                                scaleY = overviewScale
+                            }
+                        )
+                    },
                     label = { Text("Overview") },
                     selectedContentColor = MaterialTheme.colors.primary,
                     unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
                 )
 
                 // --- State Tab (kept functional) ---
+                val stateSelected = current?.destination?.route == "mind_state"
+                val stateScale by animateFloatAsState(
+                    targetValue = if (stateSelected) 1.35f else 1f,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                )
+
                 BottomNavigationItem(
-                    selected = current?.destination?.route == "mind_state",
+                    selected = stateSelected,
                     onClick = {
                         nav.navigate("mind_state") {
                             launchSingleTop = true
                             popUpTo("mind_overview") { inclusive = false }
                         }
                     },
-                    icon = { Icon(Icons.Filled.Timeline, contentDescription = "State") },
+                    icon = {
+                        Icon(
+                            Icons.Filled.Timeline,
+                            contentDescription = "State",
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = stateScale
+                                scaleY = stateScale
+                            }
+                        )
+                    },
                     label = { Text("State") },
                     selectedContentColor = MaterialTheme.colors.primary,
                     unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)

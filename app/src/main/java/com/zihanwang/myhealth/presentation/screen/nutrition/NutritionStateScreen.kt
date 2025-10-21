@@ -10,6 +10,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
@@ -24,14 +27,14 @@ import kotlin.math.max
 
 @Composable
 fun NutritionStateScreen(
-    // Keep AndroidViewModel factory as-is (your ViewModel extends AndroidViewModel)
+    // Keep your AndroidViewModel factory (unchanged)
     vm: NutritionViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
             LocalContext.current.applicationContext as Application
         )
     )
 ) {
-    /* ---------- Reactive states from ViewModel (unchanged) ---------- */
+    // -------- reactive states from ViewModel (unchanged) --------
     val totals by vm.totals.collectAsState()
     val weeklyTotals by vm.weeklyTotals.collectAsState()
     val kcalGoal by vm.kcalGoal.collectAsState()
@@ -39,53 +42,107 @@ fun NutritionStateScreen(
     val conditions by vm.allConditions.collectAsState()
     val foods by vm.recommendedFoods.collectAsState()
 
-    /* ---------- Anchor all weekly charts to the REAL "today" ---------- */
-    // Do NOT remember this; it must update when the calendar day changes.
+    // Always anchor to the real "today". Do NOT remember it, otherwise it freezes.
     val anchorToday = LocalDate.now()
 
-    // Re-run weekly DB subscription whenever today changes.
-    LaunchedEffect(anchorToday) { vm.loadWeeklyTotals(center = anchorToday) }
-
-    // Always render exactly 7 days ending at "today". Missing days are zero-filled.
-    val weekly7 = remember(weeklyTotals, anchorToday) {
-        padTo7Days(weeklyTotals, anchor = anchorToday)
+    // Re-run weekly query whenever today's date changes.
+    LaunchedEffect(anchorToday) {
+        vm.loadWeeklyTotals(center = anchorToday)
     }
 
+    // Always render exactly 7 days, with TODAY as the last day of the window.
+    val weekly7 = remember(weeklyTotals, anchorToday) { padTo7Days(weeklyTotals, anchor = anchorToday) }
+    val weeklyIsAllZero = remember(weekly7) { weekly7.isAllZero() }
+
     Scaffold { inner ->
-        // Use LazyColumn so the State page can scroll on smaller screens.
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 24.dp)
         ) {
+            // Optional loading bar while weekly data is being collected for the first time
+            if (weeklyTotals.isEmpty()) {
+                item {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .semantics { contentDescription = "Loading weekly nutrition" }
+                            .testTag("weeklyLoading")
+                    )
+                }
+            }
+
             item {
-                DailyEnergyCard(current = totals.kcal, goal = kcalGoal)
+                DailyEnergyCard(
+                    current = totals.kcal,
+                    goal = kcalGoal
+                )
             }
             item {
                 DailyMacroTargetsCard(t = totals, targets = macroTargets)
             }
             item {
-                QualityGuardCard(sugar = totals.sugar, satFat = totals.satFat, sodium = totals.sodium)
+                QualityGuardCard(
+                    sugar = totals.sugar,
+                    satFat = totals.satFat,
+                    sodium = totals.sodium
+                )
             }
+
+            // 7-day Calorie Trend
             item {
-                WeeklyCaloriesTrendCard(list = weekly7, goal = kcalGoal, anchor = anchorToday)
+                WeeklyCaloriesTrendCard(
+                    list = weekly7,
+                    goal = kcalGoal,
+                    anchor = anchorToday,
+                    showEmptyHint = weeklyIsAllZero, // keep your original flag
+                    modifier = Modifier
+                        .semantics { contentDescription = "7-day calorie trend" }
+                        .testTag("calorieTrend")
+                )
             }
+
+            // 7-day Macro Ratio
             item {
-                WeeklyMacroStackedCard(list = weekly7, anchor = anchorToday)
+                WeeklyMacroStackedCard(
+                    list = weekly7,
+                    anchor = anchorToday,
+                    showEmptyHint = weeklyIsAllZero, // keep your original flag
+                    modifier = Modifier
+                        .semantics { contentDescription = "7-day macro ratio" }
+                        .testTag("macroRatio")
+                )
             }
+
+            // 7-day Sugar / Sodium
             item {
-                WeeklyQualityBarsCard(list = weekly7, anchor = anchorToday)
+                WeeklyQualityBarsCard(
+                    list = weekly7,
+                    anchor = anchorToday,
+                    showEmptyHint = weeklyIsAllZero, // keep your original flag
+                    modifier = Modifier
+                        .semantics { contentDescription = "7-day sugar and sodium" }
+                        .testTag("qualityWeekly")
+                )
             }
+
+            // Personalized insights
             item {
-                ConditionInsightsCard(conditions = conditions, totals = totals, foods = foods)
+                ConditionInsightsCard(
+                    conditions = conditions,
+                    totals = totals,
+                    foods = foods
+                )
             }
         }
     }
 }
 
-/* ---------------- DAILY CARDS (kept same UI) ---------------- */
+/* ---------------- DAILY CARDS (unchanged UI) ---------------- */
 
 @Composable
 private fun DailyEnergyCard(current: Int, goal: Int) {
@@ -159,8 +216,8 @@ private fun DailyMacroTargetsCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("$pLabel: ${t.protein.toInt()} g", color = pColor)
-                Text("$cLabel: ${t.carb.toInt()} g",    color = cColor)
-                Text("$fLabel: ${t.fat.toInt()} g",     color = fColor)
+                Text("$cLabel: ${t.carb.toInt()} g", color = cColor)
+                Text("$fLabel: ${t.fat.toInt()} g", color = fColor)
             }
         }
     }
@@ -172,8 +229,8 @@ private fun QualityGuardCard(sugar: Float, satFat: Float, sodium: Int) {
     val fatGoal = 20f
     val sodiumGoal = 2300
 
-    val sugarColor  = if (sugar  > sugarGoal)  MaterialTheme.colors.error else MaterialTheme.colors.primary
-    val satFatColor = if (satFat > fatGoal)    MaterialTheme.colors.error else MaterialTheme.colors.primary
+    val sugarColor = if (sugar > sugarGoal) MaterialTheme.colors.error else MaterialTheme.colors.primary
+    val satFatColor = if (satFat > fatGoal) MaterialTheme.colors.error else MaterialTheme.colors.primary
     val sodiumColor = if (sodium > sodiumGoal) MaterialTheme.colors.error else MaterialTheme.colors.primary
 
     Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
@@ -186,22 +243,34 @@ private fun QualityGuardCard(sugar: Float, satFat: Float, sodium: Int) {
     }
 }
 
-/* ---------------- WEEKLY CARDS (anchored to today) ---------------- */
+/* ---------------- WEEKLY CARDS (anchored labels + a11y + empty hint) ---------------- */
 
-/** Calorie bars for last 7 days; weekday labels derived from [anchor] so "today" is guaranteed. */
+/**
+ * 7-day calorie bars. Single label row (bottom only).
+ * If there is no data, bars render at height 0 and labels still show to keep layout stable.
+ */
 @Composable
 private fun WeeklyCaloriesTrendCard(
     list: List<NutritionViewModel.DailyTotals>,
     goal: Int,
-    anchor: LocalDate
+    anchor: LocalDate,
+    showEmptyHint: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val fmt = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
     val start = remember(anchor) { anchor.minusDays(6) }
     val labels = remember(anchor) { (0..6).map { start.plusDays(it.toLong()).format(fmt) } }
 
-    Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+    Card(elevation = 4.dp, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("7-Day Calorie Trend", fontWeight = FontWeight.Bold)
+            if (showEmptyHint) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "No data in the last 7 days. Add meals to see trends.",
+                    style = MaterialTheme.typography.caption
+                )
+            }
             Spacer(Modifier.height(8.dp))
 
             Row(
@@ -218,7 +287,7 @@ private fun WeeklyCaloriesTrendCard(
                         Box(
                             modifier = Modifier
                                 .width(16.dp)
-                                .height((h * 80f).dp)
+                                .height((h * 80f).dp) // 0 height when empty
                                 .background(MaterialTheme.colors.primary)
                         )
                         Spacer(Modifier.height(6.dp))
@@ -230,20 +299,31 @@ private fun WeeklyCaloriesTrendCard(
     }
 }
 
-/** Macro stacked bars for last 7 days; labels derived from [anchor] so the last row is "today". */
+/**
+ * 7-day macro stacked bars. When a day is all-zero, we render a faint placeholder bar.
+ */
 @Composable
 private fun WeeklyMacroStackedCard(
     list: List<NutritionViewModel.DailyTotals>,
-    anchor: LocalDate
+    anchor: LocalDate,
+    showEmptyHint: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val fmt = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
-    val epsilon = 0.0001f // weight() must be strictly > 0
+    val epsilon = 0.0001f // weight() must be > 0
     val start = remember(anchor) { anchor.minusDays(6) }
     val labels = remember(anchor) { (0..6).map { start.plusDays(it.toLong()).format(fmt) } }
 
-    Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+    Card(elevation = 4.dp, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("7-Day Macro Ratio", fontWeight = FontWeight.Bold)
+            if (showEmptyHint) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "No data in the last 7 days. Add meals to see trends.",
+                    style = MaterialTheme.typography.caption
+                )
+            }
             Spacer(Modifier.height(8.dp))
 
             list.forEachIndexed { idx, d ->
@@ -254,7 +334,7 @@ private fun WeeklyMacroStackedCard(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (sum <= 0f) {
-                        // Placeholder bar when a day has no macros recorded
+                        // Faint placeholder to keep row height consistent
                         Box(
                             modifier = Modifier
                                 .height(12.dp)
@@ -297,11 +377,15 @@ private fun WeeklyMacroStackedCard(
     }
 }
 
-/** Sugar / Sodium simple lines for last 7 days; labels also from [anchor] for consistency. */
+/**
+ * 7-day sugar & sodium lines. Values are 0 when empty, labels still come from anchor.
+ */
 @Composable
 private fun WeeklyQualityBarsCard(
     list: List<NutritionViewModel.DailyTotals>,
-    anchor: LocalDate
+    anchor: LocalDate,
+    showEmptyHint: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val sugarGoal = 50f
     val sodiumGoal = 2300
@@ -309,18 +393,39 @@ private fun WeeklyQualityBarsCard(
     val start = remember(anchor) { anchor.minusDays(6) }
     val labels = remember(anchor) { (0..6).map { start.plusDays(it.toLong()).format(fmt) } }
 
-    Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+    Card(elevation = 4.dp, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("7-Day Sugar/Sodium", fontWeight = FontWeight.Bold)
+            if (showEmptyHint) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "No data in the last 7 days. Add meals to see trends.",
+                    style = MaterialTheme.typography.caption
+                )
+            }
             Spacer(Modifier.height(8.dp))
 
             list.forEachIndexed { idx, d ->
                 val sColor = if (d.t.sugar > sugarGoal) MaterialTheme.colors.error else MaterialTheme.colors.primary
                 val nColor = if (d.t.sodium > sodiumGoal) MaterialTheme.colors.error else MaterialTheme.colors.primary
-                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text(labels.getOrElse(idx) { "?" })
-                    Text("Sugar ${d.t.sugar.toInt()} g", color = sColor)
-                    Text("Na ${d.t.sodium} mg", color = nColor)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        labels.getOrElse(idx) { "?" },
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "Sugar ${d.t.sugar.toInt()} g",
+                        color = sColor,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "Na ${d.t.sodium} mg",
+                        color = nColor,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 Spacer(Modifier.height(4.dp))
             }
@@ -362,12 +467,9 @@ private fun ConditionInsightsCard(
     }
 }
 
-/* ---------------- Utility: produce exactly 7 consecutive days ending at today ---------------- */
+/* ---------------- Utilities ---------------- */
 
-/**
- * Build exactly 7 consecutive days ending at [anchor] (today).
- * Missing dates are filled with zero totals so charts and labels never skip a weekday.
- */
+/** Build exactly 7 consecutive days ending at [anchor] (today). */
 private fun padTo7Days(
     src: List<NutritionViewModel.DailyTotals>,
     anchor: LocalDate
@@ -385,9 +487,20 @@ private fun padTo7Days(
                 protein = 0f,
                 fat = 0f,
                 sugar = 0f,
-                satFat = 0f, // keep schema-compatible with your Totals
+                satFat = 0f,
                 sodium = 0
             )
         )
     }
 }
+
+/** True if all 7 days are zeros (for showing a gentle empty hint). */
+private fun List<NutritionViewModel.DailyTotals>.isAllZero(): Boolean =
+    isNotEmpty() && all {
+        it.t.kcal == 0 &&
+                it.t.carb == 0f &&
+                it.t.protein == 0f &&
+                it.t.fat == 0f &&
+                it.t.sugar == 0f &&
+                it.t.sodium == 0
+    }

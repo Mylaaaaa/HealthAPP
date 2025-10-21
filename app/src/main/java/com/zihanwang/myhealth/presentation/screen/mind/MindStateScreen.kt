@@ -91,6 +91,9 @@ fun MindStateScreen(
                         )
                     }
                 }
+// ADD: text summary for accessibility (screen readers)
+                val trendSummary = "7-day minutes: " + weekly.joinToString(separator = ", ")
+                Text(trendSummary, color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
 
                 Spacer(Modifier.height(8.dp))
                 Text(

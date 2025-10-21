@@ -62,7 +62,7 @@ fun QuickActionCard(
             Box(
                 Modifier.size(40.dp).clip(CircleShape).background(tint.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
-            ) { Icon(icon, contentDescription = null, tint = tint) }
+            ) { Icon(icon, contentDescription = "Quick action icon", tint = tint) } // a11y: add description for screen readers
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, color = MaterialTheme.colors.onSurface)
@@ -88,7 +88,7 @@ fun GuidedChip(s: MindSession, onStart: (MindSession) -> Unit) {
             Box(
                 modifier = Modifier.size(36.dp).clip(CircleShape).background(s.accent.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Filled.PlayArrow, null, tint = s.accent) }
+            ) { Icon(Icons.Filled.PlayArrow, contentDescription = "Start guided session", tint = s.accent) } // a11y: describe the action
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(s.title, color = MaterialTheme.colors.onSurface)

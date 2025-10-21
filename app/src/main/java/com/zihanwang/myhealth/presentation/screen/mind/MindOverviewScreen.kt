@@ -167,7 +167,8 @@ fun MindOverviewScreen(
                 )
                 QuickActionCard(
                     title = "Mood",
-                    subtitle = moodToday?.label ?: "check-in",
+                    // Clearer wording for UX
+                    subtitle = moodToday?.label ?: "log mood",
                     icon = Icons.Filled.Psychology,
                     tint = MaterialTheme.colors.secondary,
                     onClick = { vm.checkInMood(Mood.GOOD) },

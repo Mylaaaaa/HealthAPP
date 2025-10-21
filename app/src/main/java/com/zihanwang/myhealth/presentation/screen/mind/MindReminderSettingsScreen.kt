@@ -33,27 +33,33 @@ fun MindReminderSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                backgroundColor = Color.White,
+                // Use theme surface so light/dark modes look correct
+                backgroundColor = MaterialTheme.colors.surface,
+                // Ensure proper contrast for icons/text
+                contentColor = MaterialTheme.colors.onSurface,
                 elevation = 0.dp,
                 title = { Text("Reminder date") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
+                        // Keep accessible description
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
         },
-        backgroundColor = Color.White
+        // Use theme background instead of hardcoded white for dark mode support
+        backgroundColor = MaterialTheme.colors.background
     ) { inner ->
+
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(inner)
-                .padding(16.dp)
-                .background(Color.White),
+                .padding(16.dp),
+            // Inherit background from Scaffold/theme; no hardcoded white
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Choose a date for your reminder", style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
+        Text("Choose a date for your reminder", style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold))
 
             // Quick choices
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

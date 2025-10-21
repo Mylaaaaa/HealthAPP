@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import java.time.LocalDate
+import kotlinx.coroutines.launch // for showing Snackbar in a coroutine
 
 /**
  * Timer screen that saves to the provided date.
@@ -45,12 +46,21 @@ fun MindSessionTimerScreen(
     val mm = secondsLeft / 60
     val ss = secondsLeft % 60
     val timeText = "%02d:%02d".format(mm, ss)
+    val scaffold = rememberScaffoldState()
+    val scope = rememberCoroutineScope()
 
     Scaffold(
+        // Inject scaffold state so we can show Snackbars
+        scaffoldState = scaffold,
         topBar = {
             TopAppBar(
                 title = { Text(title) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        // a11y: describe the back action for screen readers
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 backgroundColor = MaterialTheme.colors.surface, contentColor = MaterialTheme.colors.onSurface, elevation = 0.dp
             )
         },
@@ -75,8 +85,19 @@ fun MindSessionTimerScreen(
                 onClick = {
                     val date = runCatching { LocalDate.parse(dateIso) }.getOrElse { LocalDate.now() }
                     vm.setDate(date)
-                    vm.addSession(minutes, tag)
-                    onBack()
+
+                    // Save the ACTUAL practiced minutes instead of the target minutes.
+                    // This avoids over-reporting if the user ends early.
+                    val actualMinutes = ((minutes * 60 - secondsLeft).coerceAtLeast(0)) / 60
+                    val toSave = actualMinutes.coerceAtLeast(1) // minimum 1 minute
+
+                    // Show user feedback with Snackbars
+                    scope.launch {
+                        runCatching { vm.addSession(toSave, tag) }
+                            .onSuccess { scaffold.snackbarHostState.showSnackbar("Saved") }
+                            .onFailure { scaffold.snackbarHostState.showSnackbar("Save failed") }
+                        onBack()
+                    }
                 },
                 enabled = !running || secondsLeft == 0
             ) { Text("Finish") }

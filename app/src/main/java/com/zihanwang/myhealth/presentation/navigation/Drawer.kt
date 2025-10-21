@@ -113,7 +113,6 @@ fun Drawer(
         SectionHeader(text = "Tools")
 
         val secondaryItems = listOf(
-            Screen.DifferentialChanges,
             Screen.SettingsScreen
         ).filter { it.hasMenuItem }
 

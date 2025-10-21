@@ -60,7 +60,6 @@ fun HealthConnectApp(
                         Screen.ExerciseSessions.route -> Screen.ExerciseSessions.titleId
                         Screen.SleepSessions.route -> Screen.SleepSessions.titleId
                         Screen.InputReadings.route -> Screen.InputReadings.titleId
-                        Screen.DifferentialChanges.route -> Screen.DifferentialChanges.titleId
                         Screen.WeightRecords.route -> Screen.WeightRecords.titleId
                         Screen.Nutrition.route -> Screen.Nutrition.titleId
                         Screen.Mind.route -> Screen.Mind.titleId

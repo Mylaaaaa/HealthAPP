@@ -12,9 +12,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navDeepLink
 import com.zihanwang.myhealth.data.HealthConnectManager
 import com.zihanwang.myhealth.presentation.screen.SettingsScreen
-import com.zihanwang.myhealth.presentation.screen.changes.DifferentialChangesScreen
-import com.zihanwang.myhealth.presentation.screen.changes.DifferentialChangesViewModel
-import com.zihanwang.myhealth.presentation.screen.changes.DifferentialChangesViewModelFactory
 import com.zihanwang.myhealth.presentation.screen.exercisesession.ExerciseSessionScreen
 import com.zihanwang.myhealth.presentation.screen.exercisesession.ExerciseSessionViewModel
 import com.zihanwang.myhealth.presentation.screen.exercisesession.ExerciseSessionViewModelFactory
@@ -315,36 +312,6 @@ fun HealthConnectNavigation(
                 onPermissionsResult = { viewModel.initialLoad() },
                 onPermissionsLaunch = { values -> permissionsLauncher.launch(values) }
             )
-        }
-
-        // Differential Changes
-        composable(Screen.DifferentialChanges.route) {
-            val viewModel: DifferentialChangesViewModel = viewModel(
-                factory = DifferentialChangesViewModelFactory(healthConnectManager)
-            )
-
-            val changesToken       = viewModel.changesToken.value
-            val permissionsGranted = viewModel.permissionsGranted.value
-            val permissions        = viewModel.permissions
-
-            val onPermissionsResult = { viewModel.initialLoad() }
-            val permissionsLauncher =
-                rememberLauncherForActivityResult(viewModel.permissionsLauncher) {
-                    onPermissionsResult()
-                }
-
-            DifferentialChangesScreen(
-                permissionsGranted = permissionsGranted,
-                permissions = permissions,
-                changesEnabled = changesToken != null,
-                onChangesEnable = { enabled -> viewModel.enableOrDisableChanges(enabled) },
-                changes = viewModel.changes,
-                changesToken = changesToken,
-                onGetChanges = { viewModel.getChanges() },
-                uiState = viewModel.uiState,
-                onError = { exception -> showExceptionSnackbar(scaffoldState, scope, exception) },
-                onPermissionsResult = { viewModel.initialLoad() }
-            ) { values -> permissionsLauncher.launch(values) }
         }
 
         // Other tabs

@@ -10,7 +10,7 @@ object Prepopulate {
             carb = 12f,
             protein = 2.4f,
             fat = 1.4f,
-            sodium = 2,
+            sodium = 2.0f,
             sugar = 0.5f,
             satFat = 0.2f
         ),
@@ -21,7 +21,7 @@ object Prepopulate {
             carb = 1.1f,
             protein = 13f,
             fat = 11f,
-            sodium = 124,
+            sodium = 124.0f,
             sugar = 1.1f,
             satFat = 3.3f
         ),
@@ -32,7 +32,7 @@ object Prepopulate {
             carb = 0f,
             protein = 31f,
             fat = 3.6f,
-            sodium = 74,
+            sodium = 74.0f,
             sugar = 0f,
             satFat = 1f
         ),
@@ -43,7 +43,7 @@ object Prepopulate {
             carb = 28f,
             protein = 2.7f,
             fat = 0.3f,
-            sodium = 1,
+            sodium = 1.0f,
             sugar = 0.1f,
             satFat = 0.1f
         ),
@@ -54,7 +54,7 @@ object Prepopulate {
             carb = 14f,
             protein = 0.3f,
             fat = 0.2f,
-            sodium = 1,
+            sodium = 1.0f,
             sugar = 10f,
             satFat = 0f
         ),
@@ -65,7 +65,7 @@ object Prepopulate {
             carb = 5f,
             protein = 3.4f,
             fat = 1f,
-            sodium = 44,
+            sodium = 44.0f,
             sugar = 5.2f,
             satFat = 0.6f
         )

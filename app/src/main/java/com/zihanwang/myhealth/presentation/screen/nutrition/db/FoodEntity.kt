@@ -12,7 +12,7 @@ data class FoodEntity(
     val carb: Float,
     val protein: Float,
     val fat: Float,
-    val sodium: Int,
+    val sodium: Float,
     val sugar: Float,
     val satFat: Float
 )

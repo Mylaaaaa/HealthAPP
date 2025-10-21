@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FoodDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(food: FoodEntity)
     @Query("SELECT * FROM foods ORDER BY name ASC")
     fun getAll(): Flow<List<FoodEntity>>
 

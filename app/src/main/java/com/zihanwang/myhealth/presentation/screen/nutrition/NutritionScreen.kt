@@ -219,19 +219,18 @@ fun NutritionScreen(
                 } else {
                     LazyColumn(contentPadding = PaddingValues(12.dp)) {
                         items(meals, key = { it.entry.id }) { m ->
-                            val scaled = scale(m.food, m.entry.grams)
+                            val scaled = m.food?.let { scale(it, m.entry.grams) }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 8.dp)
                                     .semantics {
-                                        // Accessibility: read key info in a single phrase
                                         contentDescription =
-                                            "${m.food.name}, ${m.entry.grams} grams, " +
-                                                    "${scaled.kcal} kilocalories, " +
-                                                    "Carbs ${"%.1f".format(scaled.carb)} grams, " +
-                                                    "Protein ${"%.1f".format(scaled.protein)} grams, " +
-                                                    "Fat ${"%.1f".format(scaled.fat)} grams"
+                                            "${m.food?.name ?: "Unknown food"}, ${m.entry.grams} grams, " +
+                                                    "${scaled?.kcal ?: 0} kilocalories, " +
+                                                    "Carbs ${"%.1f".format(scaled?.carb ?: 0f)} grams, " +
+                                                    "Protein ${"%.1f".format(scaled?.protein ?: 0f)} grams, " +
+                                                    "Fat ${"%.1f".format(scaled?.fat ?: 0f)} grams"
                                     },
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -239,20 +238,17 @@ fun NutritionScreen(
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        m.food.name,
+                                        m.food?.name ?: "Unknown food",
                                         style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.SemiBold),
                                         maxLines = 1, overflow = TextOverflow.Ellipsis
                                     )
-                                    Text("${m.entry.grams} g • ${scaled.pretty()}", style = MaterialTheme.typography.body2)
-                                }
-                                IconButton(
-                                    onClick = { vm.deleteMeal(m) },
-                                    modifier = Modifier.size(48.dp) // touch target >= 48dp
-                                ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = "Delete ${m.food.name}"
+                                    Text(
+                                        "${m.entry.grams} g • ${scaled?.pretty() ?: ""}",
+                                        style = MaterialTheme.typography.body2
                                     )
+                                }
+                                IconButton(onClick = { vm.deleteMeal(m) }, modifier = Modifier.size(48.dp)) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete ${m.food?.name ?: "Unknown"}")
                                 }
                             }
                             Divider()
@@ -464,58 +460,137 @@ private fun MealBadge(type: MealType) {
 }
 
 // ------------ Add Food Dialog ------------
+// ------------ Add Food Dialog (with External API Integration) ------------
 @Composable
 private fun AddFoodDialog(
     preselected: FoodEntity? = null,
     onDismiss: () -> Unit,
-    onConfirm: (FoodEntity, Int, MealType) -> Unit
+    onConfirm: (FoodEntity, Int, MealType) -> Unit,
+    vm: NutritionViewModel = viewModel()
 ) {
     val ctx = LocalContext.current
     val db = remember { com.zihanwang.myhealth.presentation.screen.nutrition.db.NutritionDatabase.get(ctx) }
 
+    // Local UI states
     var query by remember { mutableStateOf("") }
     var gramsText by remember { mutableStateOf("100") }
     var selected by remember { mutableStateOf<FoodEntity?>(preselected) }
     var meal by remember { mutableStateOf(MealType.Breakfast) }
 
+    // Ensure preloaded food database is not empty
     LaunchedEffect(Unit) {
         if (db.foodDao().count() == 0) {
-            db.foodDao().upsertAll(com.zihanwang.myhealth.presentation.screen.nutrition.db.Prepopulate.foods())
+            db.foodDao().upsertAll(
+                com.zihanwang.myhealth.presentation.screen.nutrition.db.Prepopulate.foods()
+            )
         }
     }
 
+    // Collect local (Room) foods
     val foodsFlow = remember(query) {
         if (query.isBlank()) db.foodDao().getAll() else db.foodDao().search(query)
     }
     val foods by foodsFlow.collectAsState(initial = emptyList())
+
+    // --- NEW: External API search results (sharedFlow in ViewModel) ---
+    val onlineResults by vm.onlineSearchResults.collectAsState()
+    var searching by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Food") },
         text = {
             Column {
+                // --- External API Search Section ---
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("Search food") },
+                    label = { Text("Search food (local or online)") },
                     singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "Search food input" }
+                    modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
 
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Button(
+                        onClick = {
+                            if (query.isNotBlank()) {
+                                searching = true
+                                // Trigger ViewModel API search
+                                vm.searchFoodOnline(query)
+                            }
+                        },
+                        modifier = Modifier.height(46.dp)
+                    ) { Text("Search Online") }
+
+                    if (searching) {
+                        Spacer(Modifier.width(12.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+
+                // --- Show Online API Results (limit 20) ---
+                if (onlineResults.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("Online Results", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    LazyColumn(
+                        modifier = Modifier
+                            .heightIn(max = 240.dp)
+                            .padding(top = 4.dp)
+                    ) {
+                        items(onlineResults.take(20)) { f ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable {
+                                        // Convert API result (ExternalFoodItem) into FoodEntity for database compatibility
+                                        selected = FoodEntity(
+                                            code = f.name.take(12).replace(" ", "_"), // generate temp code
+                                            name = f.name,
+                                            kcal = f.kcal.toInt(),          // ✅ Int
+                                            protein = f.protein.toFloat(),  // ✅ Float
+                                            carb = f.carb.toFloat(),        // ✅ Float
+                                            fat = f.fat.toFloat(),          // ✅ Float
+                                            satFat = 0f,                    // ✅ Float
+                                            sodium = 0f,                    // ✅ Float
+                                            sugar = 0f                      // ✅ Float
+                                        )
+                                        query = f.name
+                                        searching = false
+                                    },
+                                        shape = RoundedCornerShape(10.dp),
+                                elevation = 2.dp
+                            ) {
+                                Column(Modifier.padding(10.dp)) {
+                                    Text(f.name, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "${f.kcal} kcal • P ${"%.1f".format(f.protein)}g • C ${"%.1f".format(f.carb)}g • F ${"%.1f".format(f.fat)}g",
+                                        style = MaterialTheme.typography.caption
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // --- Local Database Section ---
+                Text("Local Foods", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colors.onSurface.copy(alpha = 0.06f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 220.dp)
-                        .semantics { contentDescription = "Food search results" }
+                        .heightIn(max = 200.dp)
                 ) {
                     if (foods.isEmpty()) {
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            Text("No results", modifier = Modifier.padding(12.dp))
+                            Text("No local results", modifier = Modifier.padding(12.dp))
                         }
                     } else {
                         LazyColumn {
@@ -524,8 +599,7 @@ private fun AddFoodDialog(
                                     Modifier
                                         .fillMaxWidth()
                                         .clickable { selected = f }
-                                        .padding(12.dp)
-                                        .semantics { contentDescription = "Select ${f.name}" },
+                                        .padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(Modifier.weight(1f)) {
@@ -539,8 +613,9 @@ private fun AddFoodDialog(
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
 
+                // --- Meal Type Selection ---
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Meal:", modifier = Modifier.width(56.dp))
                     MealType.values().forEach {
@@ -551,22 +626,25 @@ private fun AddFoodDialog(
 
                 Spacer(Modifier.height(8.dp))
 
+                // --- Input for grams ---
                 OutlinedTextField(
                     value = gramsText,
                     onValueChange = { gramsText = it.filter(Char::isDigit) },
                     label = { Text("Grams") },
                     singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "Grams input" }
+                    modifier = Modifier.fillMaxWidth()
                 )
 
+                // --- Preview nutrition summary ---
                 AnimatedVisibility(visible = selected != null) {
                     val s = selected
                     if (s != null) {
                         val preview = scale(s, gramsText.toIntOrNull() ?: 100)
                         Spacer(Modifier.height(8.dp))
-                        Text("Preview: ${preview.pretty()}", style = MaterialTheme.typography.body2)
+                        Text(
+                            "Preview: ${preview.pretty()}",
+                            style = MaterialTheme.typography.body2
+                        )
                     }
                 }
             }
@@ -578,18 +656,15 @@ private fun AddFoodDialog(
                     val g = gramsText.toIntOrNull() ?: return@TextButton
                     val s = selected ?: return@TextButton
                     onConfirm(s, g, meal)
-                },
-                modifier = Modifier.semantics { contentDescription = "Confirm add food" }
+                }
             ) { Text("Add") }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.semantics { contentDescription = "Cancel add food" }
-            ) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
+
 
 @Composable
 private fun FilterChip(selected: Boolean, onClick: () -> Unit, text: String) {

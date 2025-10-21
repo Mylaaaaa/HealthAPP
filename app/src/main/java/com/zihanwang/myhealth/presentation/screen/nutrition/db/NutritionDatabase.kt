@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
  */
 @Database(
     entities = [FoodEntity::class, MealEntryEntity::class, ConditionEntity::class],
-    version = 2, // bumped because we added a new table
+    version = 3, // bumped because we added a new table
     exportSchema = true
 )
 @TypeConverters(Converters::class)

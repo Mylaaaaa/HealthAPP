@@ -10,5 +10,5 @@ data class MealEntryWithFood(
         parentColumn = "foodCode",
         entityColumn = "code"
     )
-    val food: FoodEntity
+    val food: FoodEntity?
 )

@@ -62,7 +62,7 @@ fun NutritionScreen(
     val isDark = !MaterialTheme.colors.isLight
     val cardBg = if (isDark) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
     val fabContainer = if (isDark) Color(0xFF2E7D32) else Color(0xFF1976D2)
-    val fabContent = Color.White
+    val fabContent = MaterialTheme.colors.onPrimary // theme-aware icon color
     val recChipBg = if (isDark)
         MaterialTheme.colors.primary.copy(alpha = 0.28f)
     else
@@ -211,7 +211,7 @@ fun NutritionScreen(
                             .semantics { contentDescription = "No items. Tap add to create your first meal." },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(42.dp).clip(CircleShape))
+                        Icon(Icons.Default.Add, contentDescription = "Add item", modifier = Modifier.size(42.dp).clip(CircleShape)) // a11y
                         Spacer(Modifier.height(8.dp))
                         Text("No items yet", style = MaterialTheme.typography.subtitle1)
                         Text("Tap + to log your first meal", style = MaterialTheme.typography.body2)

@@ -586,7 +586,7 @@ private fun BackgroundReadRequest(
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.NotificationsActive, contentDescription = null)
+                Icon(Icons.Default.NotificationsActive, contentDescription = "Workout reminder") // a11y
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Allow background read", style = MaterialTheme.typography.subtitle2)
@@ -614,7 +614,7 @@ private fun EmptyState() {
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(Icons.Default.DirectionsRun, contentDescription = null, tint = Color.Gray)
+            Icon(Icons.Default.DirectionsRun, contentDescription = "No sessions yet", tint = Color.Gray) // a11y
             Spacer(Modifier.height(8.dp))
             Text("No sessions yet.", color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f))
             Text(

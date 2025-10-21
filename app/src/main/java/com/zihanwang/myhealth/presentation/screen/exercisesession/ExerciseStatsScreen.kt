@@ -721,7 +721,7 @@ private fun EmptyStateCard(
         ) {
             Icon(
                 imageVector = androidx.compose.material.icons.Icons.Filled.FitnessCenter,
-                contentDescription = null,
+                contentDescription = "Exercise stats", // a11y
                 tint = colors.onSurface.copy(alpha = 0.45f),
                 modifier = Modifier.size(40.dp)
             )

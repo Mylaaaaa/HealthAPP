@@ -3,6 +3,8 @@ package com.zihanwang.myhealth.presentation.screen.nutrition
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,19 +17,21 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import com.zihanwang.myhealth.presentation.screen.nutrition.db.ConditionEntity
 import com.zihanwang.myhealth.presentation.screen.nutrition.db.FoodEntity
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.max
 
 @Composable
 fun NutritionStateScreen(
-    // Use AndroidViewModelFactory to avoid crash (AndroidViewModel needs Application)
+    // Keep AndroidViewModel factory as-is (your ViewModel extends AndroidViewModel)
     vm: NutritionViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
             LocalContext.current.applicationContext as Application
         )
     )
 ) {
+    /* ---------- Reactive states from ViewModel (unchanged) ---------- */
     val totals by vm.totals.collectAsState()
     val weeklyTotals by vm.weeklyTotals.collectAsState()
     val kcalGoal by vm.kcalGoal.collectAsState()
@@ -35,28 +39,53 @@ fun NutritionStateScreen(
     val conditions by vm.allConditions.collectAsState()
     val foods by vm.recommendedFoods.collectAsState()
 
-    LaunchedEffect(Unit) { vm.loadWeeklyTotals() }
+    /* ---------- Anchor all weekly charts to the REAL "today" ---------- */
+    // Do NOT remember this; it must update when the calendar day changes.
+    val anchorToday = LocalDate.now()
 
-    Scaffold{ inner ->
-        Column(
+    // Re-run weekly DB subscription whenever today changes.
+    LaunchedEffect(anchorToday) { vm.loadWeeklyTotals(center = anchorToday) }
+
+    // Always render exactly 7 days ending at "today". Missing days are zero-filled.
+    val weekly7 = remember(weeklyTotals, anchorToday) {
+        padTo7Days(weeklyTotals, anchor = anchorToday)
+    }
+
+    Scaffold { inner ->
+        // Use LazyColumn so the State page can scroll on smaller screens.
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            DailyEnergyCard(current = totals.kcal, goal = kcalGoal)
-            DailyMacroTargetsCard(t = totals, targets = macroTargets)
-            QualityGuardCard(sugar = totals.sugar, satFat = totals.satFat, sodium = totals.sodium)
-            WeeklyCaloriesTrendCard(list = weeklyTotals, goal = kcalGoal)
-            WeeklyMacroStackedCard(list = weeklyTotals)
-            WeeklyQualityBarsCard(list = weeklyTotals)
-            ConditionInsightsCard(conditions = conditions, totals = totals, foods = foods)
+            item {
+                DailyEnergyCard(current = totals.kcal, goal = kcalGoal)
+            }
+            item {
+                DailyMacroTargetsCard(t = totals, targets = macroTargets)
+            }
+            item {
+                QualityGuardCard(sugar = totals.sugar, satFat = totals.satFat, sodium = totals.sodium)
+            }
+            item {
+                WeeklyCaloriesTrendCard(list = weekly7, goal = kcalGoal, anchor = anchorToday)
+            }
+            item {
+                WeeklyMacroStackedCard(list = weekly7, anchor = anchorToday)
+            }
+            item {
+                WeeklyQualityBarsCard(list = weekly7, anchor = anchorToday)
+            }
+            item {
+                ConditionInsightsCard(conditions = conditions, totals = totals, foods = foods)
+            }
         }
     }
 }
 
-/* ---------------- DAILY CARDS ---------------- */
+/* ---------------- DAILY CARDS (kept same UI) ---------------- */
 
 @Composable
 private fun DailyEnergyCard(current: Int, goal: Int) {
@@ -86,8 +115,6 @@ private fun DailyMacroTargetsCard(
     t: NutritionRepository.Totals,
     targets: NutritionViewModel.MacroTargets
 ) {
-    // Compute labels and colors directly in the @Composable scope
-
     val pDiff = (t.protein - targets.p) / targets.p.coerceAtLeast(1f)
     val pLabel = when {
         pDiff > 0.15f -> "Protein High"
@@ -145,7 +172,6 @@ private fun QualityGuardCard(sugar: Float, satFat: Float, sodium: Int) {
     val fatGoal = 20f
     val sodiumGoal = 2300
 
-    // Decide colors inside the @Composable scope (no helper function)
     val sugarColor  = if (sugar  > sugarGoal)  MaterialTheme.colors.error else MaterialTheme.colors.primary
     val satFatColor = if (satFat > fatGoal)    MaterialTheme.colors.error else MaterialTheme.colors.primary
     val sodiumColor = if (sodium > sodiumGoal) MaterialTheme.colors.error else MaterialTheme.colors.primary
@@ -160,18 +186,24 @@ private fun QualityGuardCard(sugar: Float, satFat: Float, sodium: Int) {
     }
 }
 
-/* ---------------- WEEKLY CARDS ---------------- */
+/* ---------------- WEEKLY CARDS (anchored to today) ---------------- */
 
+/** Calorie bars for last 7 days; weekday labels derived from [anchor] so "today" is guaranteed. */
 @Composable
-private fun WeeklyCaloriesTrendCard(list: List<NutritionViewModel.DailyTotals>, goal: Int) {
+private fun WeeklyCaloriesTrendCard(
+    list: List<NutritionViewModel.DailyTotals>,
+    goal: Int,
+    anchor: LocalDate
+) {
     val fmt = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
+    val start = remember(anchor) { anchor.minusDays(6) }
+    val labels = remember(anchor) { (0..6).map { start.plusDays(it.toLong()).format(fmt) } }
 
     Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("7-Day Calorie Trend", fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
 
-            // simple column bars
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -180,7 +212,7 @@ private fun WeeklyCaloriesTrendCard(list: List<NutritionViewModel.DailyTotals>, 
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 val maxKcal = (list.maxOfOrNull { it.t.kcal } ?: goal).coerceAtLeast(goal)
-                list.forEach { day ->
+                list.forEachIndexed { idx, day ->
                     val h = (day.t.kcal.toFloat() / maxKcal).coerceIn(0f, 1f)
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
@@ -190,7 +222,7 @@ private fun WeeklyCaloriesTrendCard(list: List<NutritionViewModel.DailyTotals>, 
                                 .background(MaterialTheme.colors.primary)
                         )
                         Spacer(Modifier.height(6.dp))
-                        Text(day.date.format(fmt), style = MaterialTheme.typography.caption)
+                        Text(labels.getOrElse(idx) { "?" }, style = MaterialTheme.typography.caption)
                     }
                 }
             }
@@ -198,17 +230,23 @@ private fun WeeklyCaloriesTrendCard(list: List<NutritionViewModel.DailyTotals>, 
     }
 }
 
+/** Macro stacked bars for last 7 days; labels derived from [anchor] so the last row is "today". */
 @Composable
-private fun WeeklyMacroStackedCard(list: List<NutritionViewModel.DailyTotals>) {
-    val fmt = java.time.format.DateTimeFormatter.ofPattern("E", java.util.Locale.getDefault())
-    val epsilon = 0.0001f // weight() must be > 0
+private fun WeeklyMacroStackedCard(
+    list: List<NutritionViewModel.DailyTotals>,
+    anchor: LocalDate
+) {
+    val fmt = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
+    val epsilon = 0.0001f // weight() must be strictly > 0
+    val start = remember(anchor) { anchor.minusDays(6) }
+    val labels = remember(anchor) { (0..6).map { start.plusDays(it.toLong()).format(fmt) } }
 
     Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("7-Day Macro Ratio", fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
 
-            list.forEach { d ->
+            list.forEachIndexed { idx, d ->
                 val p = max(d.t.protein, 0f)
                 val c = max(d.t.carb, 0f)
                 val f = max(d.t.fat, 0f)
@@ -216,11 +254,11 @@ private fun WeeklyMacroStackedCard(list: List<NutritionViewModel.DailyTotals>) {
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (sum <= 0f) {
-                        // All zero → show a faint placeholder bar
+                        // Placeholder bar when a day has no macros recorded
                         Box(
                             modifier = Modifier
                                 .height(12.dp)
-                                .fillMaxWidth(0.7f) // short placeholder
+                                .fillMaxWidth(0.7f)
                                 .background(MaterialTheme.colors.onSurface.copy(alpha = 0.1f))
                         )
                     } else {
@@ -250,7 +288,7 @@ private fun WeeklyMacroStackedCard(list: List<NutritionViewModel.DailyTotals>) {
                     }
 
                     Spacer(Modifier.width(8.dp))
-                    Text(d.date.format(fmt), style = MaterialTheme.typography.caption)
+                    Text(labels.getOrElse(idx) { "?" }, style = MaterialTheme.typography.caption)
                 }
 
                 Spacer(Modifier.height(4.dp))
@@ -259,22 +297,28 @@ private fun WeeklyMacroStackedCard(list: List<NutritionViewModel.DailyTotals>) {
     }
 }
 
+/** Sugar / Sodium simple lines for last 7 days; labels also from [anchor] for consistency. */
 @Composable
-private fun WeeklyQualityBarsCard(list: List<NutritionViewModel.DailyTotals>) {
+private fun WeeklyQualityBarsCard(
+    list: List<NutritionViewModel.DailyTotals>,
+    anchor: LocalDate
+) {
     val sugarGoal = 50f
     val sodiumGoal = 2300
-    val fmt = DateTimeFormatter.ofPattern("E", Locale.getDefault())
+    val fmt = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
+    val start = remember(anchor) { anchor.minusDays(6) }
+    val labels = remember(anchor) { (0..6).map { start.plusDays(it.toLong()).format(fmt) } }
 
     Card(elevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("7-Day Sugar/Sodium", fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
 
-            list.forEach { d ->
+            list.forEachIndexed { idx, d ->
                 val sColor = if (d.t.sugar > sugarGoal) MaterialTheme.colors.error else MaterialTheme.colors.primary
                 val nColor = if (d.t.sodium > sodiumGoal) MaterialTheme.colors.error else MaterialTheme.colors.primary
                 Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text(d.date.format(fmt))
+                    Text(labels.getOrElse(idx) { "?" })
                     Text("Sugar ${d.t.sugar.toInt()} g", color = sColor)
                     Text("Na ${d.t.sodium} mg", color = nColor)
                 }
@@ -284,7 +328,7 @@ private fun WeeklyQualityBarsCard(list: List<NutritionViewModel.DailyTotals>) {
     }
 }
 
-/* ---------------- INSIGHTS ---------------- */
+/* ---------------- Insights (unchanged) ---------------- */
 
 @Composable
 private fun ConditionInsightsCard(
@@ -315,5 +359,35 @@ private fun ConditionInsightsCard(
                 foods.take(3).forEach { f -> Text("- ${f.name}") }
             }
         }
+    }
+}
+
+/* ---------------- Utility: produce exactly 7 consecutive days ending at today ---------------- */
+
+/**
+ * Build exactly 7 consecutive days ending at [anchor] (today).
+ * Missing dates are filled with zero totals so charts and labels never skip a weekday.
+ */
+private fun padTo7Days(
+    src: List<NutritionViewModel.DailyTotals>,
+    anchor: LocalDate
+): List<NutritionViewModel.DailyTotals> {
+    val start = anchor.minusDays(6)
+    val map = src.associateBy { it.date }
+
+    return (0..6).map { i ->
+        val d = start.plusDays(i.toLong())
+        map[d] ?: NutritionViewModel.DailyTotals(
+            date = d,
+            t = NutritionRepository.Totals(
+                kcal = 0,
+                carb = 0f,
+                protein = 0f,
+                fat = 0f,
+                sugar = 0f,
+                satFat = 0f, // keep schema-compatible with your Totals
+                sodium = 0
+            )
+        )
     }
 }

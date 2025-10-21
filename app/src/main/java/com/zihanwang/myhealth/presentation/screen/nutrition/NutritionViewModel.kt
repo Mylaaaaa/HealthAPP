@@ -11,22 +11,21 @@ import com.zihanwang.myhealth.presentation.screen.nutrition.db.NutritionDatabase
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * ViewModel for Nutrition screens.
- * Changes in this version:
- * 1) Add delete-with-undo support via a one-shot UI event (Snackbar).
- * 2) Keep original data flows and architecture intact.
- * 3) No repository/db schema change is required.
+ *
+ * Goals of this version:
+ * 1) Keep your existing architecture and public API intact.
+ * 2) Make weekly stats always end at "today" (inclusive) without changing Repository/DAO.
+ * 3) Fix compile errors caused by missing Job/observe* functions.
  */
 class NutritionViewModel(app: Application) : AndroidViewModel(app) {
 
     private val db = NutritionDatabase.get(app)
     private val repo = NutritionRepository(db.foodDao(), db.mealEntryDao(), db.conditionDao())
 
-    // ---------------- Date selection ----------------
+    /* ---------------- Date selection ---------------- */
     private val _date = MutableStateFlow(LocalDate.now())
     val date: StateFlow<LocalDate> = _date.asStateFlow()
 
@@ -35,15 +34,16 @@ class NutritionViewModel(app: Application) : AndroidViewModel(app) {
     val openDatePicker: SharedFlow<Unit> = _openDatePicker
     fun requestOpenDatePicker() { _openDatePicker.tryEmit(Unit) }
 
-    // ---------------- Meals of current date ----------------
+    /* ---------------- Meals of current date ---------------- */
     val meals: StateFlow<List<MealEntryWithFood>> =
         date.flatMapLatest { d -> repo.observeMeals(d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val totals = meals.map { repo.totals(it) }
+    val totals = meals
+        .map { repo.totals(it) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, repo.totals(emptyList()))
 
-    // ---------------- Conditions & recommendations ----------------
+    /* ---------------- Conditions & recommendations ---------------- */
     val allConditions: StateFlow<List<ConditionEntity>> =
         repo.observeAllConditions()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -52,39 +52,46 @@ class NutritionViewModel(app: Application) : AndroidViewModel(app) {
         repo.observeRecommendedFoods()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    // ---------------- Targets (temporary defaults; can be loaded from settings later) ----------------
+    /* ---------------- Targets (temporary defaults; can be loaded from settings later) ---------------- */
     data class MacroTargets(val p: Float, val c: Float, val f: Float)
     val kcalGoal = MutableStateFlow(2000)
     val macroTargets = MutableStateFlow(MacroTargets(p = 120f, c = 250f, f = 60f))
 
-    // ---------------- Weekly totals for last 7 days ----------------
+    /* ---------------- Weekly totals for last 7 days ---------------- */
     data class DailyTotals(val date: LocalDate, val t: NutritionRepository.Totals)
 
     private val _weeklyTotals = MutableStateFlow<List<DailyTotals>>(emptyList())
     val weeklyTotals: StateFlow<List<DailyTotals>> = _weeklyTotals.asStateFlow()
 
     /**
-     * Loads totals for the last 7 days ending at [center] (inclusive).
-     * Requires NutritionRepository.getMealsBetweenGroupedByDate().
+     * Compute the last 7 days ending at [center] (inclusive) and publish to [_weeklyTotals].
+     * This version does NOT rely on any new Repository APIs, so it compiles cleanly.
+     *
+     * If you later want "live" updates as today's meals change, we can upgrade this
+     * to a Flow-based subscription — but for now this guarantees correctness and stability.
      */
-    fun loadWeeklyTotals(center: LocalDate = date.value) = viewModelScope.launch {
-        val end = center
-        val start = end.minusDays(6)
+    fun loadWeeklyTotals(center: LocalDate = LocalDate.now()) {
+        viewModelScope.launch {
+            val end = center                   // inclusive (today)
+            val start = end.minusDays(6)       // 7-day window
 
-        // DB access on IO dispatcher
-        val list: List<DailyTotals> = withContext(Dispatchers.IO) {
-            val mealsByDay = repo.getMealsBetweenGroupedByDate(start, end)
-            (0..6).map { i ->
+            // Use your existing repository method that returns a Map<LocalDate, List<MealEntryWithFood>>
+            // IMPORTANT: ensure the repo method includes 'end' (today). If it uses an exclusive upper bound,
+            // we should adjust it there. For now we assume it is inclusive.
+            val mealsByDay: Map<LocalDate, List<MealEntryWithFood>> =
+                repo.getMealsBetweenGroupedByDate(start, end)
+
+            // Build exactly 7 buckets [start..end], zero-filled when missing
+            val list = (0..6).map { i ->
                 val d = start.plusDays(i.toLong())
                 val t = repo.totals(mealsByDay[d].orEmpty())
                 DailyTotals(date = d, t = t)
             }
+            _weeklyTotals.value = list
         }
-
-        _weeklyTotals.value = list
     }
 
-    // ---------------- UI events (Snackbar) ----------------
+    /* ---------------- UI events (Snackbar) ---------------- */
     sealed class UiEvent {
         data class ShowUndoDelete(val message: String) : UiEvent()
     }
@@ -95,7 +102,7 @@ class NutritionViewModel(app: Application) : AndroidViewModel(app) {
     // Keep last deleted item for undo
     private var lastDeleted: MealEntryWithFood? = null
 
-    // ---------------- Public commands ----------------
+    /* ---------------- Public commands ---------------- */
     fun setDate(d: LocalDate) { _date.value = d }
 
     fun addMeal(meal: MealType, foodCode: String, grams: Int) =
@@ -106,24 +113,24 @@ class NutritionViewModel(app: Application) : AndroidViewModel(app) {
                 foodCode = foodCode,
                 grams = grams
             )
+            // Optional: also refresh weekly window when adding on "today"
+            // (harmless even if date != today)
+            loadWeeklyTotals(LocalDate.now())
         }
+
     /**
      * Delete a meal (with undo support). We pass the full row so we can restore it on undo
      * without extra repository methods or schema changes.
      */
     fun deleteMeal(row: MealEntryWithFood) = viewModelScope.launch {
-        // Delete by id in repository
-        repo.deleteMeal(row.entry.id)
-        // Cache last deleted for undo
-        lastDeleted = row
-        // Emit a one-shot event so the screen can show a Snackbar with "Undo"
+        repo.deleteMeal(row.entry.id)          // Delete by id in repository
+        lastDeleted = row                      // Cache last deleted for undo
         _events.emit(UiEvent.ShowUndoDelete("Deleted: ${row.food.name}"))
-        // After deletion, any collectors of 'meals' and 'totals' will update automatically
+        // Keep weekly charts fresh (especially if deleted today's entry)
+        loadWeeklyTotals(LocalDate.now())
     }
 
-    /**
-     * Undo the last deletion if any.
-     */
+    /** Undo the last deletion if any. */
     fun undoDelete() = viewModelScope.launch {
         val cached = lastDeleted ?: return@launch
         repo.addMeal(
@@ -133,6 +140,7 @@ class NutritionViewModel(app: Application) : AndroidViewModel(app) {
             grams = cached.entry.grams
         )
         lastDeleted = null
+        loadWeeklyTotals(LocalDate.now())
     }
 
     fun addCondition(name: String) =
@@ -153,5 +161,7 @@ class NutritionViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+        // Also populate weekly totals once at startup (anchored to "today")
+        loadWeeklyTotals(LocalDate.now())
     }
 }

@@ -31,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zihanwang.myhealth.presentation.screen.exercisesession.WorkoutDashboardEntry
 import com.zihanwang.myhealth.presentation.screen.exercisesession.ExerciseSessionViewModel
 import com.zihanwang.myhealth.presentation.screen.exercisesession.ExerciseSessionViewModelFactory
+import androidx.compose.ui.text.font.FontWeight
 
 
 @Composable
@@ -127,36 +128,49 @@ fun ExerciseSessionScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding(),
             bottomBar = {
-                BottomNavigation {
+                BottomNavigation(
+                    backgroundColor = MaterialTheme.colors.surface,
+                    contentColor = MaterialTheme.colors.onSurface,
+                    elevation = 6.dp
+                ) {
                     ExerciseTab.values().forEach { tab ->
-                        // Icon scale animation on selection
-                        val interaction = remember { MutableInteractionSource() }
+                        val selected = selectedTab == tab
+                        val iconTint = if (selected) Color(0xFF1976D2) else Color.Gray
+
                         val scale by animateFloatAsState(
-                            targetValue = if (selectedTab == tab) 1.35f else 1f,
+                            targetValue = if (selected) 1.2f else 1f,
                             label = "tab_scale"
                         )
+
                         BottomNavigationItem(
-                            selected = selectedTab == tab,
+                            selected = selected,
                             onClick = { selectedTab = tab },
                             icon = {
                                 Icon(
-                                    tab.icon,
+                                    imageVector = tab.icon,
                                     contentDescription = tab.title,
+                                    tint = iconTint,
                                     modifier = Modifier.graphicsLayer {
                                         scaleX = scale
                                         scaleY = scale
                                     }
                                 )
                             },
-                            label = { Text(tab.title) },
-                            selectedContentColor = MaterialTheme.colors.primary,
-                            unselectedContentColor = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                            label = {
+                                Text(
+                                    tab.title,
+                                    color = iconTint,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
                             alwaysShowLabel = true,
-                            interactionSource = interaction
+                            selectedContentColor = iconTint,
+                            unselectedContentColor = Color.Gray
                         )
                     }
                 }
             }
+
         ) { paddingValues ->
 
             // IMPORTANT: no verticalScroll here – avoid nesting with LazyColumn inside tabs.

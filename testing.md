@@ -127,9 +127,11 @@ The total calories, carbohydrates, protein, and fat values increase correctly, v
 
 *Screenshot — Updated totals in Daily Summary section:*  
 before:
+
 ![before.png](screenshots/before.png)
 
 after:
+
 ![after.png](screenshots/after.png)
 
 ---

@@ -142,6 +142,19 @@ Gives users control over app permissions and appearance.
 
 ---
 
+## Architecture & Data Flow
+
+The app follows a **Model–View–ViewModel (MVVM)** architecture to ensure maintainability and modular design.
+
+- **UI Layer:** Built with Jetpack Compose; displays reactive states in real time.
+- **ViewModel Layer:** Manages state using `MutableStateFlow` and handles user interaction logic.
+- **Repository Layer:** Connects the ViewModel to both the **Room database** and **external APIs**.
+- **Local Database (Room):** Stores exercises, meals, and sleep data persistently.
+- **External API:** Nutrition module integrates with an online Food API to fetch nutrition information dynamically.
+
+*All layers communicate reactively — when data changes in the repository, the UI updates automatically.*
+
+
 ## Testing Summary
 
 Comprehensive testing was performed to ensure functional correctness, usability, and data synchronization.

@@ -55,12 +55,6 @@ fun MindSessionTimerScreen(
         topBar = {
             TopAppBar(
                 title = { Text(title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        // a11y: describe the back action for screen readers
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
                 backgroundColor = MaterialTheme.colors.surface, contentColor = MaterialTheme.colors.onSurface, elevation = 0.dp
             )
         },

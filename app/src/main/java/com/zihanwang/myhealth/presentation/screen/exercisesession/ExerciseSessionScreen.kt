@@ -1,9 +1,7 @@
 package com.zihanwang.myhealth.presentation.screen.exercisesession
 import com.zihanwang.myhealth.presentation.screen.exercisesession.planaccess.PlanTasksStore
-
 import androidx.compose.ui.platform.LocalContext
 import java.time.LocalDate
-
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -135,7 +133,13 @@ fun ExerciseSessionScreen(
                 ) {
                     ExerciseTab.values().forEach { tab ->
                         val selected = selectedTab == tab
-                        val iconTint = if (selected) Color(0xFF1976D2) else Color.Gray
+                        val isDark = !MaterialTheme.colors.isLight
+
+                        val iconTint = when {
+                            selected && isDark -> Color(0xFF4CAF50) // Green highlight in dark mode
+                            selected && !isDark -> Color(0xFF1976D2) // Blue highlight in light mode
+                            else -> Color.Gray // Unselected default
+                        }
 
                         val scale by animateFloatAsState(
                             targetValue = if (selected) 1.2f else 1f,

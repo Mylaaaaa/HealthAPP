@@ -120,13 +120,12 @@ A single-page feature for quick weight input and trend tracking.
 
 ---
 
-### Settings Module
-Gives users control over app permissions and appearance.
-- **Health Connect Permission:** requested at first launch and editable anytime.
-- **Dark / Light Mode switching**
-- **Notification & Theme customization**  
-  *Ensures privacy, control, and user comfort.*
+### Settings & Accessibility
+- **Health Connect Permission** management.
+- **Automatic Light / Dark Mode** based on system appearance.
+- **TalkBack Accessible UI:** All UI components use standard Compose semantics and support Android's screen reader navigation.
 
+*Ensures privacy, accessibility, and visual comfort.*
 ---
 
 ## Tech Stack

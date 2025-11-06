@@ -88,8 +88,8 @@ private object Dimens {
     // Card & tiles
     val cardRadius = 18.dp
     val cardPadding = 12.dp
-    val cardElev = 4.dp          // 普通卡片阴影
-    val tileElev = 3.dp          // 小块/信息块阴影
+    val cardElev = 4.dp
+    val tileElev = 3.dp
     // Feature grid
     val featureCardH = 108.dp
     val gridHGap = 12.dp

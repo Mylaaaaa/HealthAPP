@@ -1,7 +1,7 @@
 # MyHealth – Personal Health & Wellness Tracker
 
-**MyHealth** is an Android application developed with **Jetpack Compose** and **Health Connect APIs**,  
-designed to help users monitor and improve their overall wellness — including **exercise**, **sleep**, **nutrition**, **mindfulness**, and **weight tracking** — all in one modern and unified interface.
+**MyHealth** is an Android application developed using **Jetpack Compose (Material Design 2)** with the **MVVM architecture**.
+MyHealth integrates Room Database for local storage and an external Nutrition API for real-time food search and analysis, and is designed to help users monitor and improve their overall wellness — including exercise, sleep, nutrition, mindfulness, and weight tracking — all in one unified interface.
 
 ---
 
@@ -130,14 +130,17 @@ A single-page feature for quick weight input and trend tracking.
 
 ## Tech Stack
 
-| Category | Tools / Libraries                     |
-|-----------|---------------------------------------|
-| **Language** | Kotlin                                |
-| **Framework** | Jetpack Compose                       |
-| **Data Source** | Android Health Connect                |
-| **UI Design** | Material Design 2, Compose Animations |
-| **Architecture** | MVVM (ViewModel + State Management)   |
-| **Build System** | Gradle                                |
+| Category        | Tools / Libraries |
+|-----------------|------------------|
+| **IDE**         | Android Studio    |
+| **Language**    | Kotlin            |
+| **UI Framework**| Jetpack Compose (Material Design 2 + Compose Animations) |
+| **Architecture**| MVVM (ViewModel + StateFlow) |
+| **Local Storage**| Room Database    |
+| **External API**| Online Nutrition API (REST + JSON Parsing) |
+| **State Management** | MutableStateFlow / StateFlow |
+| **Build System** | Gradle           |
+
 
 ---
 
@@ -166,6 +169,7 @@ Comprehensive testing was performed to ensure functional correctness, usability,
 
 *All tests passed successfully.*  
 The app demonstrates accurate data processing, responsive UI behavior, and seamless cross-screen synchronization.
+This ensures reliability, prevents regression issues, and confirms that both UI and data logic behave as expected under real usage conditions.
 
 ---
 

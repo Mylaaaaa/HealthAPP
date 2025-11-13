@@ -564,12 +564,7 @@ private fun AssessmentBoosterPanel(
         backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.04f)
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text("Boost your demo score", style = MaterialTheme.typography.subtitle1)
-            Text(
-                "Seed planned tasks, add recommended tasks, mark/unmark all, or clear synthetic.",
-                style = MaterialTheme.typography.caption,
-                color = Color.Gray
-            )
+
             Spacer(Modifier.height(8.dp))
 
             // Row 1: Seed planned / Add recommended

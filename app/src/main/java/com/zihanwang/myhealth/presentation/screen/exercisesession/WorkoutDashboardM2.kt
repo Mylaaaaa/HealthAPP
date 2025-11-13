@@ -121,8 +121,7 @@ fun WorkoutDashboardM2(
         item {
             SectionHeaderM2(
                 icon = { Icon(Icons.AutoMirrored.Filled.DirectionsRun, contentDescription = null) },
-                title = "Demo & Evidence",
-                subtitle = "One-tap actions for graders"
+                title = "Manage Exercise",
             )
             AssessmentBoosterPanel(
                 today = today,

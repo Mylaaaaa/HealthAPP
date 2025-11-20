@@ -25,6 +25,75 @@ Provides secure authentication and ensures that only valid users can access the 
 
 *Ensures safe, reliable, and user-friendly access to the MyHealth ecosystem.*
 
+#### Screenshots
+##### Sign in
+
+![sign.png](screenshots/sign.png)
+
+##### Register
+
+![register.png](screenshots/register.png)
+---
+### Home Page Module
+
+#### Overview
+The **Home page** acts as the central dashboard of MyHealth, offering a quick and clear summary of the user’s daily wellness data. It consolidates steps, sleep, weight, goals, tips, and recent activities into one unified interface.
+
+#### Key Features
+
+- **Health Connect Permission Check**  
+  Automatically detects whether Health Connect permissions are granted. If access is missing, permission cards appear to guide users through enabling data syncing.
+
+- **Daily Greeting & Quick Actions**  
+  Displays a personalized greeting (e.g., “Hi, Zihan!”), along with a **Start Exercise** button for instantly launching a guided workout. Includes a short daily motivation message.
+
+- **Today’s Key Stats**  
+  Shows the latest daily values in compact cards, including:
+  - Steps
+  - Sleep duration
+  - Weight  
+    All values update dynamically based on Health Connect or manual entries.
+
+- **Trend Charts**  
+  Provides three lightweight charts summarizing short-term trends for:
+  - Steps
+  - Sleep
+  - Weight  
+    Charts are reactive and update instantly as new data is logged.
+
+- **Goal Tracking & Motivation**  
+  Includes visual elements designed to encourage consistency, such as:
+  - Streak counter
+  - Badge system
+  - Three progress rings for Steps, Active minutes, and Sleep  
+    Rings animate based on the user’s goal progress.
+
+- **Daily Tip**  
+  Offers a small actionable health tip each day, with a **Learn more** link for extended guidance.
+
+- **Recent Activity**  
+  Lists the most recently logged or synced activities across Exercise, Sleep, Nutrition, and Mindfulness.  
+  Users can tap **View all** to access full history.
+
+- **Navigation Shortcuts**  
+  Provides two ways to explore the app:
+  1. Explore Grid — quick-access tiles displayed on the Home page
+  2. Hamburger Menu — slide-out navigation from the top-left corner
+
+#### Screenshots
+
+##### home page 1
+
+![h1.png](screenshots/h1.png)
+
+##### home page 2
+
+![h2.png](screenshots/h2.png)
+
+##### home page 3
+
+![h3.png](screenshots/h3.png)
+
 ---
 
 ### Exercise Session Module
@@ -35,18 +104,34 @@ Helps users plan, perform, and review their workouts through four sections: **Pl
 - Generates a **personalized weekly plan** with daily recommendations.  
   *Smart fitness planning based on lifestyle and goals.*
 
+#### Screenshots
+
+![plan.png](screenshots/plan.png)
+
 #### Workout Page
 - Displays **daily exercises** with progress tracking and completion rate.  
   *Dynamic progress bar motivates consistency.*
+
+#### Screenshots
+
+![work.png](screenshots/work.png)
 
 #### Courses Page
 - Provides recommended video lessons (e.g., Yoga, HIIT).
 - Users can **join** or **track** courses they follow.  
   *Built with `LazyColumn` for smooth scrolling and performance.*
 
+#### Screenshots
+
+![courses.png](screenshots/courses.png)
+
 #### State Page
 - Shows weekly performance analytics: total time, average duration, and best streak.  
   *Custom Compose charts visualize weekly insights clearly.*
+
+#### Screenshots
+
+
 
 ---
 

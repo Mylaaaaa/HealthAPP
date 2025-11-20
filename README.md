@@ -108,6 +108,22 @@ Helps users plan, perform, and review their workouts through four sections: **Pl
 
 ![plan.png](screenshots/plan.png)
 
+##### set plan
+
+![setplan.png](screenshots/setplan.png)
+
+##### small window
+
+![smallwindow.png](screenshots/smallwindow.png)
+
+##### guid exercise and timing
+
+![guid.png](screenshots/guid.png)
+
+##### summary
+
+![summary.png](screenshots/summary.png)
+
 #### Workout Page
 - Displays **daily exercises** with progress tracking and completion rate.  
   *Dynamic progress bar motivates consistency.*
@@ -131,7 +147,11 @@ Helps users plan, perform, and review their workouts through four sections: **Pl
 
 #### Screenshots
 
+![es.png](screenshots/es.png)
 
+##### recent sessions
+
+![recents.png](screenshots/recents.png)
 
 ---
 
@@ -143,14 +163,26 @@ Tracks and analyzes sleep patterns through **Overview**, **Log**, and **State** 
 - Provides **sleep analysis** and **personalized improvement tips**.  
   *Real-time data cards with adaptive visuals.*
 
+#### Screenshots
+
+![so.png](screenshots/so.png)
+
 #### Log Page
 - Lists all sleep records with timestamps and quality ratings.  
   *Scrollable history for progress comparison.*
+
+#### Screenshots
+
+![sl.png](screenshots/sl.png)
 
 #### State Page
 - Shows **7-day stacked bar chart** (Deep / Light / REM / Awake).
 - Provides **weekly summaries** with insights.  
   *Color-coded visualization for better understanding.*
+
+#### Screenshots
+
+![ss.png](screenshots/ss.png)
 
 ---
 
@@ -165,6 +197,19 @@ Supports manual food logging, external API-powered food search, and weekly trend
 - Displays a **Recommended Foods** section that updates dynamically based on health conditions and recent food entries.
 - Supports **Undo (Snackbar)** after deleting entries for quick recovery.  
   *Combines local data (Room database) with real-time online search for smarter food logging.*
+- Support selecting date if user forgot adding food on the earlier days
+
+#### Screenshots
+
+![no.png](screenshots/no.png)
+
+##### calender
+
+![nc.png](screenshots/nc.png)
+
+##### add food
+
+![nua.png](screenshots/nua.png)
 
 #### State Page
 - Automatically synchronizes with the Overview page — all updates (added or removed foods) instantly refresh totals.
@@ -172,6 +217,12 @@ Supports manual food logging, external API-powered food search, and weekly trend
   - 7-day calorie trend
   - Macro ratio comparison (Protein / Carbs / Fat)  
     *Color-coded bar charts and reactive updates make nutrition tracking intuitive and interactive.*
+
+#### Screenshots
+
+![ns1.png](screenshots/ns1.png)
+
+![ns2.png](screenshots/ns2.png)
 
 ---
 
@@ -185,12 +236,30 @@ Improves mental well-being through breathing, mood tracking, and guided meditati
 - Displays **recent moods** and **guided sessions** (Box Breathing, Body Scan).  
   *Simplified UI encourages daily mindfulness habits.*
 
+#### Screenshots
+
+![mo.png](screenshots/mo.png)
+
+##### calender
+
+![mc.png](screenshots/mc.png)
+
+##### timing
+
+![mt.png](screenshots/mt.png)
+
 #### State Page
 - Provides a deeper look into **weekly mindfulness progress**:
   - 7-day rolling trend
   - Adherence rate and streak count
   - Mood distribution visualization  
     *Uses soft pastel charts for clear, relaxing analytics.*
+
+#### Screenshots
+
+![ms1.png](screenshots/ms1.png)
+
+![ms2.png](screenshots/ms2.png)
 
 ---
 
@@ -203,6 +272,10 @@ A single-page feature for quick weight input and trend tracking.
 - Automatically calculates **weekly average**.  
   *Simple design, instant feedback on progress.*
 
+#### Screenshots
+
+![rw.png](screenshots/rw.png)
+
 ---
 
 ### Settings & Accessibility
@@ -211,6 +284,13 @@ A single-page feature for quick weight input and trend tracking.
 - **TalkBack Accessible UI:** All UI components use standard Compose semantics and support Android's screen reader navigation.
 
 *Ensures privacy, accessibility, and visual comfort.*
+
+#### Screenshots
+
+![td.png](screenshots/td.png)
+
+![tl.png](screenshots/tl.png)
+
 ---
 
 ## Tech Stack

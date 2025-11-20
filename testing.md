@@ -75,10 +75,32 @@ and that the Daily Summary updates correctly after new entries are added.
 
 *Screenshot 1 - Add Food Dialog — Opened successfully after tapping the “+” button.* 
 This verifies that the floating action button correctly opens the Add Food window.  
+
+#### code
+
+![nucode.png](screenshots/nucode.png)
+
+#### result
+
+![nuresult.png](screenshots/nuresult.png)
+
+#### UI screenshot
+
 ![addfood.png](screenshots/addfood.png)
 
 *Screenshot 2 - API Search — The “Search Online” feature successfully fetches results from the external nutrition API.* 
 This confirms that network access and API integration are working as expected.  
+
+#### code
+
+![apicode.png](screenshots/apicode.png)
+
+#### result
+
+![apiresult.png](screenshots/apiresult.png)
+
+#### UI screenshot
+
 ![online.png](screenshots/online.png)
 
 *Screenshot 3 - Daily Summary — Nutrition data updates immediately after adding the food item.*

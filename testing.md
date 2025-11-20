@@ -73,7 +73,7 @@ and that the Daily Summary updates correctly after new entries are added.
 
 ### Test Screenshots
 
-*Screenshot 1 - Add Food Dialog — Opened successfully after tapping the “+” button.* 
+*- Add Food Dialog — Opened successfully after tapping the “+” button.* 
 This verifies that the floating action button correctly opens the Add Food window.  
 
 #### code
@@ -88,7 +88,7 @@ This verifies that the floating action button correctly opens the Add Food windo
 
 ![addfood.png](screenshots/addfood.png)
 
-*Screenshot 2 - API Search — The “Search Online” feature successfully fetches results from the external nutrition API.* 
+*- API Search — The “Search Online” feature successfully fetches results from the external nutrition API.* 
 This confirms that network access and API integration are working as expected.  
 
 #### code
@@ -103,7 +103,18 @@ This confirms that network access and API integration are working as expected.
 
 ![online.png](screenshots/online.png)
 
-*Screenshot 3 - Daily Summary — Nutrition data updates immediately after adding the food item.*
+---
+
+### Result
+The UI behaved exactly as expected:
+- Add Food dialog opened and displayed correctly.
+- API successfully returned online search results.
+
+---
+
+## 3. Manual Testing
+
+*- Daily Summary — Nutrition data updates immediately after adding the food item.*
 This shows that totals for Calories, Carbs, Protein, and Fat are recalculated in real-time.  
 before:
 
@@ -114,7 +125,7 @@ after:
 ![after.png](screenshots/after.png)
 
 
-**Screenshot 4 - Undo Snackbar — Appears after deleting an item, allowing users to revert the action.**  
+**S- Undo Snackbar — Appears after deleting an item, allowing users to revert the action.**  
 This verifies that undo functionality work correctly.  
 ![undo.png](screenshots/undo.png)
 
@@ -122,8 +133,6 @@ This verifies that undo functionality work correctly.
 
 ### Result
 The UI behaved exactly as expected:
-- Add Food dialog opened and displayed correctly.
-- API successfully returned online search results.
 - Daily Summary updated immediately after adding food.
 - Undo snackbar functioned properly.
 
@@ -134,7 +143,7 @@ This confirms that both the **UI workflow** and **API connection** in the Nutrit
 The app provides accurate, responsive feedback to user actions, ensuring a smooth and stable interactive experience.
 
 ---
-## 3. Integration Test — Nutrition Module
+## 4. Integration Test — Nutrition Module
 
 **Purpose:**  
 To verify that adding or deleting food items on the **Nutrition Overview** page correctly synchronizes data with the **State** page,  
@@ -148,11 +157,20 @@ ensuring real-time updates of calorie balance, macronutrient totals, and quality
 
 ### Test Screenshots
 
-*Screenshot 1 – Before Adding Food (State Page):*  
+#### code
+
+![Icode.png](screenshots/Icode.png)
+
+#### result
+
+![Iresult.png](screenshots/Iresult.png)
+
+#### APP screenshot
+*– Before Adding Food (State Page):*  
 Before new food is added, the State screen shows the initial energy balance (*210 kcal / 2000 kcal*) and nutrient totals.  
 ![nb.png](screenshots/nb.png)
 
-*Screenshot 2 – After Adding Food (State Page):*  
+*– After Adding Food (State Page):*  
 After additional food is added on the Overview screen, the **State page** immediately updates — showing *618 kcal* consumed and recalculated macronutrients (Protein, Carbs, Fat) and quality metrics (Sugar, Sat Fat, Sodium).  
 ![na.png](screenshots/na.png)
 
@@ -201,11 +219,7 @@ It validates that the exercise tracking logic is mathematically sound and ensure
 
 ---
 
-## 2. UI Test — Exercise Module
-
-**Purpose:**  
-To validate the **Exercise module’s user interface (UI)** behavior and confirm that all key user interactions — such as adding, completing, deleting, and joining exercise activities — respond instantly and display consistent visual feedback across screens.  
-This test ensures that users can manage their workouts intuitively while the interface maintains stability and responsiveness.
+## 2. Manual Testing
 
 **Feature Tested:**  
 1. Manual exercise addition and daily plan display.
@@ -219,6 +233,7 @@ This test ensures that users can manage their workouts intuitively while the int
 
 *Screenshot 1 – Add Exercise to Today’s Plan:*  
 This shows that the user can manually add or select an exercise (e.g., *Light run, 25 min*) and see it appear under “Today’s plan.”  
+
 ![addexercise.png](screenshots/addexercise.png)
 
 *Screenshot 2 – Mark Exercise as Done:*  
@@ -242,7 +257,6 @@ confirming that the UI dynamically updates upon joining.
 This test verifies that the **Exercise module** delivers a responsive and reliable UI experience.  
 All user interactions — including adding, completing, deleting, and enrolling in exercises — trigger immediate on-screen updates without requiring manual refresh.  
 The confirmation dialogs and live feedback mechanisms ensure that users can safely manage their workout plans while maintaining accurate and synchronized data presentation throughout the app.
-
 
 
 ### Test Screenshots
